@@ -1,0 +1,17 @@
+# Node modules and dependency files
+/node_modules/
+/vendor/
+
+# Environment files
+/.env
+
+# Editor directories and files
+/.idea/
+/.vscode/
+!.vscode/extensions.json
+
+/dist/
+.DS_Store
+
+/recovery-data/
+/reports/
