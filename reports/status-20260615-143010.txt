@@ -1,0 +1,18 @@
+════════ BÁO CÁO TRẠNG THÁI UNIFIED SESSIONS ════════
+Thời điểm    : 2026-06-15 14:30:10
+Phiên bản kit: v2.0.0   (claude-desktop-recovery-kit)
+Máy          : hieu_icetea @ /Users/hieu_icetea
+Kit          : /Users/hieu_icetea/DATA/claude-desktop-recovery-kit
+Thư mục dùng chung: /Users/hieu_icetea/Library/Application Support/Claude/claude-code-sessions-shared
+  ✅ tồn tại — 60 phiên
+
+Các folder team:
+  ✅ [symlink→shared] 88fd14d8-e8bc-4e4c-9abf-c8a1c551e522/99e6a571-eec1-4a91-8901-d7484f3afb05
+  ✅ [symlink→shared] 88fd14d8-e8bc-4e4c-9abf-c8a1c551e522/a917e5a5-5d62-4421-aa08-e22b88253f24
+  ✅ [symlink→shared] faacc506-0ab5-453e-9a49-6d06cdf27202/cbb97b9c-5d5c-44c9-a495-5c9631c2966c
+
+Tổng: 3 team đã symlink, 0 team chưa gộp.
+
+Đối chiếu chỉ mục ↔ transcript (Lớp A):
+  Phiên trong shared: 60 | có transcript: 60 | THIẾU transcript: 0
+═════════════════════════════════════════════════════

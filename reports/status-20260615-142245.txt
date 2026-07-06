@@ -1,0 +1,16 @@
+════════ BÁO CÁO TRẠNG THÁI UNIFIED SESSIONS ════════
+Thời điểm    : 2026-06-15 14:22:45
+Phiên bản kit: v2.0.0   (claude-desktop-recovery-kit)
+Máy          : hieu_icetea @ /Users/hieu_icetea
+Kit          : /Users/hieu_icetea/DATA/claude-desktop-recovery-kit
+Thư mục dùng chung: /Users/hieu_icetea/Library/Application Support/Claude/claude-code-sessions-shared
+  ❌ CHƯA tạo (chạy setup-unified-sessions.sh --apply)
+
+Các folder team:
+  ⛔ [folder THẬT, CHƯA gộp] 88fd14d8-e8bc-4e4c-9abf-c8a1c551e522/99e6a571-eec1-4a91-8901-d7484f3afb05 (57 phiên) — chạy lại setup để gộp
+  ⛔ [folder THẬT, CHƯA gộp] 88fd14d8-e8bc-4e4c-9abf-c8a1c551e522/a917e5a5-5d62-4421-aa08-e22b88253f24 (36 phiên) — chạy lại setup để gộp
+  ⛔ [folder THẬT, CHƯA gộp] faacc506-0ab5-453e-9a49-6d06cdf27202/cbb97b9c-5d5c-44c9-a495-5c9631c2966c (3 phiên) — chạy lại setup để gộp
+
+Tổng: 0 team đã symlink, 3 team chưa gộp.
+⚠️  Có team chưa gộp (team mới / sau update) → chạy: setup-unified-sessions.sh --apply
+═════════════════════════════════════════════════════

@@ -1,0 +1,12 @@
+MANIFEST — claude-desktop-recovery-kit backup
+Loại backup   : setup --apply (ROLLBACK được)
+Phiên bản kit : v2.0.0
+Script tạo    : setup-unified-sessions.sh
+Thời điểm     : 2026-06-15 14:29:51
+Máy           : hieu_icetea @ /Users/hieu_icetea
+Kit           : /Users/hieu_icetea/DATA/claude-desktop-recovery-kit
+Nội dung      : claude-code-sessions.tgz, claude.json.bak, layout-before.txt, orig-folders/
+Ghi chú       : MANIFEST này thêm thủ công sau (v2.0.0 chưa tự sinh).
+
+ROLLBACK (dùng ĐÚNG version đã tạo backup này):
+  "/Users/hieu_icetea/DATA/claude-desktop-recovery-kit/versions/v2.0.0/bin/rollback-unified-sessions.sh" "/Users/hieu_icetea/DATA/claude-desktop-recovery-kit/recovery-data/20260615-142951-apply-v2.0.0"

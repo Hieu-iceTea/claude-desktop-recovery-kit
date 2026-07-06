@@ -1,0 +1,26 @@
+CLAUDE DESKTOP RECOVERY KIT — THÔNG TIN ĐỊNH DANH
+====================================================
+Tạo ngày: 2026-06-02
+Máy gốc:
+  USERNAME : hieu_icetea
+  HOME     : /Users/hieu_icetea
+  EMAIL    : hieu.icetea@gmail.com
+
+TÀI KHOẢN & TEAM (org) ĐÃ BIẾT
+  ACCOUNT_UUID            : 88fd14d8-e8bc-4e4c-9abf-c8a1c551e522
+  ORG (VIP, đang dùng)    : 99e6a571-eec1-4a91-8901-d7484f3afb05
+  ORG (10-InnerTwo, cũ)   : a917e5a5-5d62-4421-aa08-e22b88253f24   (đã deactivate)
+
+VỊ TRÍ DỮ LIỆU GỐC TRÊN MÁY
+  Nội dung hội thoại (transcript):
+    ~/.claude/projects/<slug-theo-đường-dẫn-dự-án>/<sessionId>.jsonl
+  Chỉ mục danh sách Recents của Desktop (tab Code), chia theo team:
+    ~/Library/Application Support/Claude/claude-code-sessions/<ACCOUNT_UUID>/<ORG_UUID>/local_*.json
+
+GHI CHÚ QUAN TRỌNG
+  - Cùng tài khoản đăng nhập lại => ACCOUNT_UUID và ORG_UUID giữ nguyên => khôi phục y nguyên.
+  - Nếu máy mới có USERNAME khác "hieu_icetea": slug thư mục trong ~/.claude/projects
+    sẽ lệch (theo đường dẫn tuyệt đối). Cần đổi tên slug cho khớp đường dẫn mới
+    (xem RESTORE-PROMPT.md — Claude sẽ xử lý việc này).
+  - Nếu sau này lập team MỚI khác (ORG_UUID mới): dùng migrate-team-sessions.sh
+    để copy chỉ mục từ org cũ sang org mới.
