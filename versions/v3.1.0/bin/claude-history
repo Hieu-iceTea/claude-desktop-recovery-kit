@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# =============================================================================
+# claude-history  (v3.1.0) — MỘT lệnh gốc cho toàn bộ kit
+#
+# KHÔNG có đuôi .sh là CỐ Ý — theo Google Shell Style Guide: file thực thi mà
+# người dùng gọi trực tiếp thì KHÔNG nên có đuôi (không cần biết nó viết bằng
+# ngôn ngữ gì để chạy); chỉ THƯ VIỆN mới bắt buộc có đuôi .sh. Các script bên
+# dưới giữ .sh vì nay chúng đóng vai trò phần thực thi nội bộ.
+#
+# VÌ SAO CÓ FILE NÀY:
+#   Đo từ ~/.zsh_history (1425 dòng): 3 script chiếm ~90% lượt dùng
+#     repair-missing-sessions 132 · status 53 · safe-quit 44
+#   còn 2 script CHƯA TỪNG chạy lần nào. Người dùng phải nhớ 14 script, 17 cờ,
+#   7 alias để làm 5 việc — và đã hỏi "tôi nên làm gì tiếp theo?" 5 lần.
+#
+# THIẾT KẾ: dispatcher MỎNG. KHÔNG viết lại script nào — chỉ định tuyến và
+#   truyền tham số. Viết lại mã đang chạy đúng là cách nhanh nhất để sinh lỗi mới.
+#   (clig.dev quan tâm GIAO DIỆN một lệnh gốc, không bắt hợp nhất mã bên dưới.)
+#
+# NGUYÊN TẮC: ĐỌC thì chạy bao nhiêu cũng được. GHI thì chỉ khi ĐÃ THẤY thiếu.
+#   Mọi lệnh sửa đều mặc định XEM TRƯỚC; phải thêm --apply mới ghi.
+#
+# QUY ƯỚC: mọi định danh (biến, hàm, lệnh con) bằng TIẾNG ANH theo chuẩn kỹ
+#          thuật; mọi thứ HIỂN THỊ cho người đọc bằng TIẾNG VIỆT CÓ DẤU.
+# =============================================================================
+set -uo pipefail
+
+# ── TÌM THƯ MỤC THẬT CỦA CHÍNH MÌNH ─────────────────────────────────────────
+# `dirname $BASH_SOURCE` trả về thư mục của SYMLINK, không phải của file thật.
+# Sau khi `install` tạo ~/.local/bin/ch → …/versions/latest/bin/claude-history,
+# HERE thành ~/.local/bin ⇒ mọi script anh em đều "No such file or directory"
+# và VERSION đọc ra "?". Bắt được khi chạy thử `ch merge` ngay sau khi cài.
+# Vòng lặp dưới đây gỡ symlink từng lớp, xử lý cả đích tương đối.
+# KHÔNG dùng `readlink -f`: bản BSD trên macOS cũ không có cờ đó.
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _dir="$(cd "$(dirname "$SELF")" && pwd)"
+  SELF="$(readlink "$SELF")"
+  case "$SELF" in /*) ;; *) SELF="$_dir/$SELF" ;; esac
+done
+# `pwd` thường (không -P) giữ nguyên lối đi qua `versions/latest`, nên nâng
+# phiên bản chỉ cần đổi symlink `latest` — đúng ý đồ.
+HERE="$(cd "$(dirname "$SELF")" && pwd)"
+VER="$(cat "$HERE/../VERSION" 2>/dev/null || echo '?')"
+
+STATUS="$HERE/status.sh"
+QUIT="$HERE/safe-quit.sh"
+STORE="$HERE/store.sh"
+REPAIR="$HERE/repair-missing-sessions.sh"
+LOST="$HERE/restore-lost-entries.sh"
+DEDUP="$HERE/dedup-entries.sh"
+MERGE="$HERE/merge-branches.sh"
+FIXALL="$HERE/fix-all.sh"
+TEAMS="$HERE/teams.sh"
+
+usage() {
+  cat <<EOF
+claude-history v$VER — giữ lịch sử Claude Desktop không bị mất
+
+  KHI THẤY THIẾU — 3 bước
+    claude-history quit          1. Thoát Claude an toàn
+    claude-history fix --apply   2. Khôi phục TẤT CẢ: danh sách + nội dung
+    open -a Claude               3. Mở lại, làm việc tiếp
+
+  XEM TRƯỚC (an toàn, chỉ đọc, chạy khi Claude đang mở)
+    claude-history check         Thiếu những gì
+    claude-history fix           Sẽ sửa những gì, chưa ghi
+
+  HẰNG NGÀY
+    claude-history save          Lưu một bản vào kho git
+
+  CÀI 1 LẦN
+    claude-history install       Gõ 'ch' ở bất cứ đâu, khỏi đường dẫn dài
+
+  Tất cả lệnh:  claude-history help all
+EOF
+}
+
+usage_all() {
+  usage
+  cat <<EOF
+
+  ─── SỬA LẺ (mặc định xem trước, thêm --apply để ghi) ───
+    fix --list-only              Chỉ DANH SÁCH (hội thoại mất khỏi Recents)
+    fix --content-only           Chỉ NỘI DUNG  (mở ra thiếu tin nhắn)
+    fix lost                     Hội thoại không còn mục nào
+    fix orphan                   Phiên có nội dung nhưng chưa có mục
+    fix dup                      Nhiều mục cùng trỏ vào một hội thoại
+    fix stale                    Đổi con trỏ mục — ⚠️ là ĐÁNH ĐỔI, hiếm khi cần
+
+  ─── HỢP NHẤT NỘI DUNG (một hội thoại) ───
+    merge --list                 Hội thoại nào đang thiếu nội dung
+    merge --id <mã> --apply --point
+                                 Gộp rồi trỏ mục — cần thoát Claude trước
+    merge --id <mã> --apply --point --since 2026-07-01 --until 2026-07-31
+                                 Gộp theo giai đoạn, cho hội thoại quá lớn
+
+  ─── KHO GIT (~/DATA/claude-store) ───
+    verify                       Kiểm tra toàn vẹn kho
+    log                          Lịch sử các bản đã lưu
+    restore <bản> <đường-dẫn>    Lấy một file ra (KHÔNG ghi đè bản sống)
+    compact                      Nén sâu (~8 phút, ăn CPU)
+
+  ─── TÀI KHOẢN & TEAM ───
+    teams                        Team nào đang không thấy danh sách
+    teams --apply                Nối team rỗng vào danh sách chung (symlink)
+
+  ─── KHÁC ───
+    status                       Báo cáo trạng thái 4 lớp
+    quit --reopen                Thoát rồi mở lại luôn
+    install                      Tạo lệnh 'ch' trong ~/.local/bin
+
+  Lệnh ghi đòi Claude Desktop đã tắt — script tự chặn nếu app đang mở.
+EOF
+}
+
+
+CMD="${1:-help}"; shift 2>/dev/null || true
+
+case "$CMD" in
+
+  save)     exec "$STORE" save "$@" ;;
+  verify)   exec "$STORE" verify "$@" ;;
+  log)      exec "$STORE" log "$@" ;;
+  restore)  exec "$STORE" restore "$@" ;;
+  compact)  exec "$STORE" compact "$@" ;;
+
+  quit)     exec "$QUIT" "$@" ;;
+  status)   exec "$STATUS" "$@" ;;
+  merge)    exec "$MERGE" "$@" ;;
+  teams)    exec "$TEAMS" "$@" ;;
+
+  check)
+    # Chỉ ĐỌC. Chạy cả 5 phép rồi in ra lệnh cần chạy — thay cho việc người dùng
+    # phải nhớ script nào lo chiều nào.
+    echo "🔎 Kiểm tra 6 chiều (chỉ đọc, không ghi gì)"
+    echo
+    n_lost="$("$LOST"     2>/dev/null | sed -n 's/^Sẽ tạo \([0-9]*\) mục.*/\1/p')"
+    n_dup="$("$DEDUP"     2>/dev/null | sed -n 's/^Dọn \([0-9]*\) mục.*/\1/p')"
+    n_orphan="$("$REPAIR" 2>/dev/null | sed -n 's/^Sẽ đưa lại \([0-9]*\) hội thoại.*/\1/p')"
+    n_stale="$("$REPAIR" --fix-stale 2>/dev/null | grep -c '^\[[0-9]')"
+    n_merge="$("$MERGE" --list 2>/dev/null | sed -n 's/^🧩 Chuỗi cần HỢP NHẤT: \([0-9]*\).*/\1/p')"
+    for name in n_lost n_dup n_orphan n_stale n_merge; do
+      eval "[ -n \"\${$name:-}\" ] || $name=0"
+    done
+    printf "  ① hội thoại mất hẳn khỏi danh sách : %s\n" "$n_lost"
+    printf "  ② mục trùng                        : %s\n" "$n_dup"
+    printf "  ③ phiên chưa có mục nào            : %s\n" "$n_orphan"
+    printf "  ④ mục mở bản chưa đủ nội dung      : %s\n" "$n_stale"
+    printf "  ⑤ hội thoại có nhánh chưa gộp      : %s\n" "$n_merge"
+    echo
+    todo=0
+    [ "$n_lost"   = 0 ] || { echo "  ⚠️  claude-history fix lost      (rồi thêm --apply)"; todo=1; }
+    [ "$n_dup"    = 0 ] || { echo "  ⚠️  claude-history fix dup       (rồi thêm --apply)"; todo=1; }
+    [ "$n_orphan" = 0 ] || { echo "  ⚠️  claude-history fix orphan    (rồi thêm --apply)"; todo=1; }
+    if [ "$todo" = 0 ]; then
+      echo "  ✅ Danh sách đủ và sạch."
+    fi
+    # ④ và ⑤ KHÔNG phải hỏng hóc — cho nên không báo ⚠️, chỉ nhắc khi > 0.
+    [ "$n_stale" = 0 ] || echo "  ℹ️  ④ là ĐÁNH ĐỔI, không phải hỏng. Không đụng gì cũng không mất thêm."
+    [ "$n_merge" = 0 ] || echo "  ℹ️  ⑤ xem: claude-history merge --list"
+    # ⑥ gần như miễn phí (một lệnh find trên vài thư mục) nên để chung ở đây.
+    # Nó trả lời câu "đổi tài khoản/team thì mất danh sách không" mà không phải
+    # đợi tới lúc đổi mới biết.
+    n_team="$("$TEAMS" 2>/dev/null | sed -n 's/^.*rỗng cần nối: \([0-9]*\).*/\1/p')"
+    [ -n "${n_team:-}" ] || n_team=0
+    printf "\n  ⑥ team sẽ thấy danh sách trống    : %s\n" "$n_team"
+    [ "$n_team" = 0 ] || echo "  ⚠️  claude-history teams          (rồi thêm --apply)"
+    ;;
+
+  fix)
+    what="${1:-}"
+    case "$what" in
+      ""|--apply|--dry-run|--list-only|--content-only)
+        exec "$FIXALL" "$@" ;;
+    esac
+    shift 2>/dev/null || true
+    case "$what" in
+      lost)   exec "$LOST"   "$@" ;;
+      dup)    exec "$DEDUP"  "$@" ;;
+      orphan) exec "$REPAIR" "$@" ;;
+      stale)  exec "$REPAIR" --fix-stale "$@" ;;
+      --help|-h)
+        exec "$FIXALL" --help ;;
+      __never__)
+        echo "claude-history fix <việc>   — mặc định XEM TRƯỚC, thêm --apply để thực thi"
+        echo
+        echo "  lost     Hội thoại KHÔNG CÒN MỤC NÀO trong danh sách"
+        echo "  dup      Nhiều mục cùng trỏ vào một hội thoại"
+        echo "  orphan   Phiên có nội dung nhưng chưa có mục nào"
+        echo "  stale    Mục đang mở bản chưa đủ nội dung  (⚠️ là ĐÁNH ĐỔI)"
+        echo
+        echo "  Chưa biết cần cái nào?  claude-history check"
+        exit 0 ;;
+      *)
+        echo "⛔ Không có việc '$what'." >&2
+        echo "   Có: lost · dup · orphan · stale" >&2
+        exit 2 ;;
+    esac ;;
+
+  install)
+    # VÌ SAO CÓ LỆNH NÀY: sổ tay dặn cài `alias ch` từ v3.0.0 nhưng kiểm tra
+    # ~/.zshrc ngày 27/08/2026 — CHƯA TỪNG được cài. Hệ quả đo được: mọi hướng
+    # dẫn đều phải dán đường dẫn 90 ký tự, và chính vì thế mà có lần hướng dẫn
+    # gọi thẳng `merge-branches.sh` thay vì `claude-history merge`, làm bộ kit
+    # trông như bị phân mảnh trong khi dispatcher vốn đã bao trọn.
+    # ~/.local/bin đã nằm sẵn trên PATH và ghi được — không cần sudo, không sửa
+    # ~/.zshrc (sửa file cấu hình của người khác là việc nên tránh).
+    BINDIR="$HOME/.local/bin"
+    if [ ! -d "$BINDIR" ]; then
+      echo "⛔ Không thấy $BINDIR." >&2
+      echo "   Tạo rồi chạy lại:  mkdir -p '$BINDIR'" >&2
+      exit 1
+    fi
+    if ! printf '%s' ":$PATH:" | grep -q ":$BINDIR:"; then
+      echo "⚠️  $BINDIR không nằm trên PATH — lệnh 'ch' sẽ không gọi được." >&2
+      echo "   Thêm vào ~/.zshrc:  export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+      exit 1
+    fi
+    # Trỏ vào versions/latest chứ KHÔNG vào v3.1.0: nâng phiên bản sau này chỉ
+    # cần đổi symlink `latest`, không phải cài lại.
+    TARGET="$(cd "$HERE/../.." && pwd)/latest/bin/claude-history"
+    made=0
+    for name in claude-history ch; do
+      link="$BINDIR/$name"
+      if [ -L "$link" ] && [ "$(readlink "$link")" = "$TARGET" ]; then
+        echo "   ✅ $name — đã có, đúng đích"; continue
+      fi
+      if [ -e "$link" ] && [ ! -L "$link" ]; then
+        echo "   ⛔ $name — đã có FILE THẬT ở đó, KHÔNG ghi đè: $link" >&2
+        continue
+      fi
+      if ln -sfn "$TARGET" "$link"; then echo "   ✅ $name — đã tạo"; made=1
+      else echo "   ⛔ $name — tạo thất bại" >&2; fi
+    done
+    echo
+    if [ "$made" = 1 ]; then
+      echo "Mở TAB terminal mới (hoặc: hash -r) rồi thử:"
+    else
+      echo "Thử ngay:"
+    fi
+    echo "   ch check"
+    ;;
+
+  help)
+    case "${1:-}" in
+      all|--all) usage_all ;;
+      *) usage ;;
+    esac ;;
+  -h|--help) usage ;;
+  -V|--version)   echo "claude-history v$VER" ;;
+
+  *)
+    echo "⛔ Không có lệnh '$CMD'." >&2
+    echo >&2
+    usage >&2
+    exit 2 ;;
+esac

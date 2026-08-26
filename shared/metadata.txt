@@ -1,0 +1,35 @@
+CLAUDE DESKTOP RECOVERY KIT — THÔNG TIN ĐỊNH DANH (v2.0.0)
+============================================================
+Cập nhật: 2026-06-16  (thêm tài khoản & team mới — xem mục TÀI KHOẢN & TEAM)
+Trước đó: 2026-06-15
+Máy gốc:
+  USERNAME : hieu_icetea
+  HOME     : /Users/hieu_icetea
+  KIT      : (DI ĐỘNG — đặt ở thư mục bạn tự chọn an toàn; các script tự định vị qua đường dẫn của chính chúng, KHÔNG hardcode vị trí)
+
+TÀI KHOẢN & TEAM (org) ĐÃ BIẾT
+  ACCOUNT (hieu.icetea@gmail.com) : 88fd14d8-e8bc-4e4c-9abf-c8a1c551e522
+     ├─ ORG VIP                   : 99e6a571-eec1-4a91-8901-d7484f3afb05   (ƯU TIÊN 1, đang dùng)
+     └─ ORG 10-InnerTwo           : a917e5a5-5d62-4421-aa08-e22b88253f24   (ƯU TIÊN 3, đã deactivate)
+  ACCOUNT (HieuND Kaopiz)         : faacc506-0ab5-453e-9a49-6d06cdf27202
+     └─ ORG Kaopiz SBU1           : cbb97b9c-5d5c-44c9-a495-5c9631c2966c   (ƯU TIÊN 2, đang dùng)
+  ACCOUNT (chưa xác định tên)     : 2855e2f3-90a8-447d-a9df-c88697650a33   (MỚI thêm 2026-06-16)
+     └─ ORG (chưa xác định tên)   : 348e9952-b9aa-4d82-976b-d2b4f76f841e   (ƯU TIÊN thấp nhất; đã gộp + symlink 2026-06-16)
+     # Ghi chú: dữ liệu cục bộ (~/.claude.json, config.json) KHÔNG lưu email/tên team mới (token OAuth đã mã hoá).
+     #         Đề nghị bổ sung tên tài khoản (email) & tên team khi xác định được, thay cho "(chưa xác định tên)".
+     #         Nếu sau này muốn ưu tiên team mới khi trùng tên phiên, thêm UUID org vào PRIO_* trong setup-unified-sessions.sh.
+
+VỊ TRÍ DỮ LIỆU GỐC TRÊN MÁY (đường dẫn tuyệt đối)
+  Transcript (nội dung thật, dùng chung mọi tài khoản, KHÔNG đụng tới):
+    /Users/hieu_icetea/.claude/projects/<slug-theo-cwd>/<cliSessionId>.jsonl
+  Chỉ mục Recents của Desktop (chia theo tài khoản/team):
+    /Users/hieu_icetea/Library/Application Support/Claude/claude-code-sessions/<ACCOUNT_UUID>/<ORG_UUID>/local_*.json
+  Thư mục DÙNG CHUNG (v2 — đích của symlink):
+    /Users/hieu_icetea/Library/Application Support/Claude/claude-code-sessions-shared/
+
+GHI CHÚ QUAN TRỌNG
+  - Cùng tài khoản đăng nhập lại  => ACCOUNT_UUID & ORG_UUID GIỮ NGUYÊN => khôi phục y nguyên.
+  - Cùng username 'hieu_icetea'   => slug & cwd khớp => khôi phục trực tiếp.
+  - Username KHÁC                 => slug/cwd lệch => dùng RESTORE-PROMPT.md để sửa.
+  - ~/.claude.json (oauthAccount) có thể trỏ org KHÁC team đang dùng trên Desktop — KHÔNG tin tuyệt đối field này.
+  - Transcript là NGUỒN SỰ THẬT bền vững; mọi khôi phục đều quy về: giữ transcript + dựng lại chỉ mục.
