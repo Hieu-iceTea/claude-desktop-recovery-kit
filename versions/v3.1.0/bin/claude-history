@@ -25,22 +25,7 @@
 # =============================================================================
 set -uo pipefail
 
-# ── TÌM THƯ MỤC THẬT CỦA CHÍNH MÌNH ─────────────────────────────────────────
-# `dirname $BASH_SOURCE` trả về thư mục của SYMLINK, không phải của file thật.
-# Sau khi `install` tạo ~/.local/bin/ch → …/versions/latest/bin/claude-history,
-# HERE thành ~/.local/bin ⇒ mọi script anh em đều "No such file or directory"
-# và VERSION đọc ra "?". Bắt được khi chạy thử `ch merge` ngay sau khi cài.
-# Vòng lặp dưới đây gỡ symlink từng lớp, xử lý cả đích tương đối.
-# KHÔNG dùng `readlink -f`: bản BSD trên macOS cũ không có cờ đó.
-SELF="${BASH_SOURCE[0]}"
-while [ -L "$SELF" ]; do
-  _dir="$(cd "$(dirname "$SELF")" && pwd)"
-  SELF="$(readlink "$SELF")"
-  case "$SELF" in /*) ;; *) SELF="$_dir/$SELF" ;; esac
-done
-# `pwd` thường (không -P) giữ nguyên lối đi qua `versions/latest`, nên nâng
-# phiên bản chỉ cần đổi symlink `latest` — đúng ý đồ.
-HERE="$(cd "$(dirname "$SELF")" && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VER="$(cat "$HERE/../VERSION" 2>/dev/null || echo '?')"
 
 STATUS="$HERE/status.sh"
@@ -51,7 +36,8 @@ LOST="$HERE/restore-lost-entries.sh"
 DEDUP="$HERE/dedup-entries.sh"
 MERGE="$HERE/merge-branches.sh"
 FIXALL="$HERE/fix-all.sh"
-TEAMS="$HERE/teams.sh"
+UNIFY="$HERE/setup-unified-sessions.sh"
+UNROLL="$HERE/rollback-unified-sessions.sh"
 
 usage() {
   cat <<EOF
@@ -68,9 +54,6 @@ claude-history v$VER — giữ lịch sử Claude Desktop không bị mất
 
   HẰNG NGÀY
     claude-history save          Lưu một bản vào kho git
-
-  CÀI 1 LẦN
-    claude-history install       Gõ 'ch' ở bất cứ đâu, khỏi đường dẫn dài
 
   Tất cả lệnh:  claude-history help all
 EOF
@@ -101,14 +84,19 @@ usage_all() {
     restore <bản> <đường-dẫn>    Lấy một file ra (KHÔNG ghi đè bản sống)
     compact                      Nén sâu (~8 phút, ăn CPU)
 
-  ─── TÀI KHOẢN & TEAM ───
-    teams                        Team nào đang không thấy danh sách
-    teams --apply                Nối team rỗng vào danh sách chung (symlink)
+  ─── TÀI KHOẢN & TEAM ───  (lý do bộ kit này ra đời)
+    unify                        Xem team nào chưa dùng chung danh sách
+    unify --apply                Gộp + trỏ symlink về danh sách chung
+    unify --rollback <thư-mục>   Hoàn tác một lần unify --apply
+
+    Claude Desktop vốn cho MỖI tài khoản/team một thư mục danh sách RIÊNG —
+    đăng xuất rồi đăng nhập tài khoản khác là mất sạch danh sách cũ.
+    Lệnh unify trỏ mọi thư mục đó về MỘT danh sách chung nên không mất nữa.
+    Chạy lại sau khi: thêm tài khoản · thêm team · Claude Desktop cập nhật.
 
   ─── KHÁC ───
     status                       Báo cáo trạng thái 4 lớp
     quit --reopen                Thoát rồi mở lại luôn
-    install                      Tạo lệnh 'ch' trong ~/.local/bin
 
   Lệnh ghi đòi Claude Desktop đã tắt — script tự chặn nếu app đang mở.
 EOF
@@ -128,7 +116,16 @@ case "$CMD" in
   quit)     exec "$QUIT" "$@" ;;
   status)   exec "$STATUS" "$@" ;;
   merge)    exec "$MERGE" "$@" ;;
-  teams)    exec "$TEAMS" "$@" ;;
+  unify)
+    # KHÔNG viết script mới cho việc này. `setup-unified-sessions.sh` (từ v2.0.0,
+    # chạy thật 15/06/2026) đã làm đúng và làm nhiều hơn: gộp cả folder team CÓ
+    # phiên vào shared trước khi trỏ symlink, backup kèm MANIFEST + status-before
+    # + layout-before vào recovery-data, hoãn folder đang hoạt động xuống cuối,
+    # và có rollback đi kèm.
+    case "${1:-}" in
+      --rollback) shift; exec "$UNROLL" "$@" ;;
+      *)          exec "$UNIFY" "$@" ;;
+    esac ;;
 
   check)
     # Chỉ ĐỌC. Chạy cả 5 phép rồi in ra lệnh cần chạy — thay cho việc người dùng
@@ -162,10 +159,10 @@ case "$CMD" in
     # ⑥ gần như miễn phí (một lệnh find trên vài thư mục) nên để chung ở đây.
     # Nó trả lời câu "đổi tài khoản/team thì mất danh sách không" mà không phải
     # đợi tới lúc đổi mới biết.
-    n_team="$("$TEAMS" 2>/dev/null | sed -n 's/^.*rỗng cần nối: \([0-9]*\).*/\1/p')"
+    n_team="$("$UNIFY" --dry-run 2>/dev/null | grep -c '^   \[rank ' || true)"
     [ -n "${n_team:-}" ] || n_team=0
-    printf "\n  ⑥ team sẽ thấy danh sách trống    : %s\n" "$n_team"
-    [ "$n_team" = 0 ] || echo "  ⚠️  claude-history teams          (rồi thêm --apply)"
+    printf "\n  ⑥ team chưa dùng chung danh sách  : %s\n" "$n_team"
+    [ "$n_team" = 0 ] || echo "  ⚠️  claude-history unify         (rồi thêm --apply)"
     ;;
 
   fix)
@@ -197,50 +194,6 @@ case "$CMD" in
         echo "   Có: lost · dup · orphan · stale" >&2
         exit 2 ;;
     esac ;;
-
-  install)
-    # VÌ SAO CÓ LỆNH NÀY: sổ tay dặn cài `alias ch` từ v3.0.0 nhưng kiểm tra
-    # ~/.zshrc ngày 27/08/2026 — CHƯA TỪNG được cài. Hệ quả đo được: mọi hướng
-    # dẫn đều phải dán đường dẫn 90 ký tự, và chính vì thế mà có lần hướng dẫn
-    # gọi thẳng `merge-branches.sh` thay vì `claude-history merge`, làm bộ kit
-    # trông như bị phân mảnh trong khi dispatcher vốn đã bao trọn.
-    # ~/.local/bin đã nằm sẵn trên PATH và ghi được — không cần sudo, không sửa
-    # ~/.zshrc (sửa file cấu hình của người khác là việc nên tránh).
-    BINDIR="$HOME/.local/bin"
-    if [ ! -d "$BINDIR" ]; then
-      echo "⛔ Không thấy $BINDIR." >&2
-      echo "   Tạo rồi chạy lại:  mkdir -p '$BINDIR'" >&2
-      exit 1
-    fi
-    if ! printf '%s' ":$PATH:" | grep -q ":$BINDIR:"; then
-      echo "⚠️  $BINDIR không nằm trên PATH — lệnh 'ch' sẽ không gọi được." >&2
-      echo "   Thêm vào ~/.zshrc:  export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
-      exit 1
-    fi
-    # Trỏ vào versions/latest chứ KHÔNG vào v3.1.0: nâng phiên bản sau này chỉ
-    # cần đổi symlink `latest`, không phải cài lại.
-    TARGET="$(cd "$HERE/../.." && pwd)/latest/bin/claude-history"
-    made=0
-    for name in claude-history ch; do
-      link="$BINDIR/$name"
-      if [ -L "$link" ] && [ "$(readlink "$link")" = "$TARGET" ]; then
-        echo "   ✅ $name — đã có, đúng đích"; continue
-      fi
-      if [ -e "$link" ] && [ ! -L "$link" ]; then
-        echo "   ⛔ $name — đã có FILE THẬT ở đó, KHÔNG ghi đè: $link" >&2
-        continue
-      fi
-      if ln -sfn "$TARGET" "$link"; then echo "   ✅ $name — đã tạo"; made=1
-      else echo "   ⛔ $name — tạo thất bại" >&2; fi
-    done
-    echo
-    if [ "$made" = 1 ]; then
-      echo "Mở TAB terminal mới (hoặc: hash -r) rồi thử:"
-    else
-      echo "Thử ngay:"
-    fi
-    echo "   ch check"
-    ;;
 
   help)
     case "${1:-}" in

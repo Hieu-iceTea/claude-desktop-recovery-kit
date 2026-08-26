@@ -58,48 +58,62 @@ Nên `merge` nhận `--title-suffix "(07/2026)"` để đặt tên riêng cho b�
 của từng giai đoạn. Tên khác thật ⇒ ba chốt tự cho qua, không nới gì cả.
 Chỉ sửa tiêu đề của FILE MỚI; nhánh nguồn không bị đụng.
 
-## `teams` — một danh sách cho mọi tài khoản/team
+## `unify` — nối lại lệnh vốn ĐÃ CÓ (sửa một sai lầm của chính bản vá này)
 
-Recents nằm ở hai tầng:
+Bản nháp v3.1.0 tự viết một script mới `teams.sh` cho việc "đổi tài khoản mà
+không mất danh sách". **Sai — kit đã có sẵn `setup-unified-sessions.sh` từ
+v2.0.0, chạy thật ngày 15/06/2026.** Nó chỉ chưa được nối vào dispatcher.
+`teams.sh` đã bị XOÁ.
+
+Sai lầm kèm theo, nghiêm trọng hơn, là hiểu ngược nguyên nhân: bản nháp ghi
+"9/10 thư mục là symlink — đó là cách app tự làm". **Ngược hoàn toàn.** Claude
+Desktop luôn tạo thư mục RIÊNG cho mỗi tài khoản/team:
 
 ```
-claude-code-sessions-shared/                 ← danh sách THẬT
-claude-code-sessions/<tài-khoản>/<team>/     ← thường là SYMLINK về trên
+claude-code-sessions/<tài-khoản>/<team>/local_*.json
 ```
 
-Đo 27/08: **9/10 thư mục là symlink** — và đúng vì thế mà lần đổi tài khoản
-21/08 không mất gì, dù hội thoại có từ 11/05. Transcript hoàn toàn không có
-trường tài khoản nào.
+Đăng xuất rồi đăng nhập tài khoản khác ⇒ app đọc thư mục khác ⇒ **mất trắng
+danh sách cũ**. Đây chính là sự cố gốc đã dẫn tới việc lập bộ kit này.
 
-Nhưng **1 thư mục là THẬT và RỖNG** (`d26e7c83…/d00b1a05…` — tài khoản hiện tại,
-một team khác). Chuyển sang team đó thì Recents trống trơn.
+9 symlink đang có là **do kit tạo ra** ngày 15/06, không phải app. Hệ quả thực
+tế: **phải chạy lại `unify --apply` sau mỗi lần thêm tài khoản, thêm team, hoặc
+sau khi Claude Desktop cập nhật** — thứ mà cách hiểu sai kia sẽ khiến bỏ qua.
 
-`teams --apply` thay thư mục rỗng bằng symlink. **Chỉ đụng thư mục RỖNG** —
-thư mục có mục thì từ chối và in cách gộp thủ công. Kiểm lại bằng `rmdir` ngay
-trước khi xoá nên không thể xoá nhầm thư mục vừa có mục.
+Đo 27/08/2026: 1 thư mục thật còn sót (`d26e7c83…/d00b1a05…`, 0 phiên) — tài
+khoản hiện tại, một team khác. Chuyển sang team đó thì Recents trống trơn.
 
-Hơn `~/.claude/migrate-team-sessions.sh` (chép): chép tốn đĩa ×N team và hai bản
-PHÂN KỲ từ đó, phải chép lại sau mỗi lần đổi. Symlink là một danh sách, 0 byte,
-không chạy lại bao giờ.
+`setup-unified-sessions.sh` làm nhiều hơn `teams.sh` đã định làm: gộp cả thư mục
+team CÓ phiên vào shared trước khi trỏ symlink (không mất mục nào), backup kèm
+MANIFEST + `status-before.txt` + `layout-before.txt` vào `recovery-data/`, hoãn
+thư mục đang hoạt động xuống cuối cùng, và có `rollback-unified-sessions.sh`
+đi kèm.
 
-`check` thêm chiều ⑥ để biết trước khi đổi team, không phải đợi mất mới biết.
+Định tuyến mới:
 
-## `install` — cửa trước, cuối cùng cũng có
+```
+claude-history unify                       → setup-unified-sessions.sh
+claude-history unify --apply
+claude-history unify --rollback <thư-mục>  → rollback-unified-sessions.sh
+```
 
-Sổ tay dặn cài `alias ch` từ v3.0.0. Kiểm tra `~/.zshrc` ngày 27/08: **chưa từng
-được cài**. Hệ quả đo được: mọi hướng dẫn phải dán đường dẫn 90 ký tự, và chính
-vì thế mà có lần hướng dẫn gọi thẳng `merge-branches.sh` thay vì `claude-history
-merge` — làm bộ kit trông như bị phân mảnh trong khi dispatcher vốn đã bao trọn.
+`check` thêm chiều ⑥ để biết TRƯỚC khi đổi tài khoản, không phải đợi mất mới biết.
 
-`claude-history install` tạo symlink `ch` và `claude-history` trong `~/.local/bin`
-(đã sẵn trên PATH, ghi được, không cần sudo, không sửa `~/.zshrc`). Symlink trỏ
-vào `versions/latest` nên nâng phiên bản không phải cài lại.
+⚠️ Hệ quả của danh sách dùng chung: xoá / đổi tên / lưu trữ là **toàn cục**.
+
+## Cách gọi lệnh: giữ ĐƯỜNG DẪN ĐẦY ĐỦ
+
+Bản nháp có thêm `claude-history install` tạo symlink `ch` trong `~/.local/bin`.
+**Đã gỡ bỏ theo yêu cầu người dùng**: luôn gõ đường dẫn đầy đủ để thấy rõ đang
+chạy bản nào, ở đâu. Hai symlink đã tạo cũng đã xoá.
+
+Kèm theo đó, đoạn gỡ symlink trong `HERE` cũng được trả về bản gốc — không còn
+symlink nào để gỡ.
 
 ## Không đổi
 
 Không đụng vào `repair-missing-sessions.sh`, `restore-lost-entries.sh`,
-`dedup-entries.sh`, `store.sh`, `safe-quit.sh`, `status.sh`. shellcheck sạch
-toàn bộ 17 script.
+`dedup-entries.sh`, `store.sh`, `safe-quit.sh`, `status.sh`. shellcheck sạch toàn bộ 16 script.
 
 ---
 
