@@ -77,7 +77,7 @@ if [ "$DRY" -eq 1 ]; then
   echo "     4. kiểm tra chỉ đọc (repair / restore-lost-entries / fix-stale)"
   [ "$REOPEN" -eq 1 ] && echo "     5. open -a $APPNAME" || echo "     5. KHÔNG mở lại (thêm --reopen nếu muốn)"
   echo "
-     ⚠️  RỒI SAU KHI MỞ LẠI: claude-history fix --apply  (BẮT BUỘC)"
+     ⚠️  RỒI, TRƯỚC KHI MỞ LẠI: claude-history fix --apply  (BẮT BUỘC)"
   exit 0
 fi
 
@@ -203,7 +203,7 @@ fi
 # trong lúc app còn chạy thì không phép kiểm nào lúc này thấy được.
 echo
 echo "══════════════════════════════════════════════════════════════"
-echo "⚠️  SAU KHI MỞ LẠI CLAUDE — BẮT BUỘC chạy lệnh này:"
+echo "⚠️  CHẠY NGAY BÂY GIỜ — TRƯỚC khi mở lại Claude:"
 echo
 echo "      claude-history fix --apply"
 echo
@@ -212,7 +212,10 @@ echo "   THIẾU nội dung. Nén ngữ cảnh sinh nhánh mới liên tục, nh
 echo "   Recents vẫn trỏ nhánh cũ. Dữ liệu KHÔNG mất — chỉ mất lối vào."
 echo "   Lệnh trên gộp các nhánh và trỏ mục về bản đủ nhất."
 echo
-echo "   Rồi mở hội thoại đó, kiểm tin nhắn cuối cùng có mặt chưa."
+echo "   ⚠️ PHẢI chạy LÚC APP ĐANG ĐÓNG — mở Claude lên rồi thì lệnh này"
+echo "      bị CHẶN. Thứ tự đúng:  quit → fix --apply → open -a Claude"
+echo
+echo "   Xong rồi mới mở, và kiểm tin nhắn cuối cùng có mặt chưa."
 echo "══════════════════════════════════════════════════════════════"
 
 # ── 5. Mở lại ───────────────────────────────────────────────────────────────
