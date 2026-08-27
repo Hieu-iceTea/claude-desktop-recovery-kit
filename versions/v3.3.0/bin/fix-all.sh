@@ -29,6 +29,7 @@ REPAIR="$HERE/repair-missing-sessions.sh"
 DEDUP="$HERE/dedup-entries.sh"
 MERGE="$HERE/merge-branches.sh"
 VERIFY="$HERE/verify-entries.sh"
+ACTIVITY="$HERE/fix-activity.sh"
 STORE="$HERE/store.sh"
 
 # ── ĐỒNG HỒ ─────────────────────────────────────────────────────────────────
@@ -243,6 +244,24 @@ fi
 # ── Lưu một bản vào kho git để có điểm lùi cho lần sau ──────────────────────
 if [ "$APPLY" = 1 ] && [ -x "$STORE" ]; then
   "$STORE" save >/dev/null 2>&1 && echo "💾 Đã lưu bản sau khi sửa vào kho git."
+fi
+
+# ── ③ THỨ TỰ DANH SÁCH ──────────────────────────────────────────────────────
+# Chế độ hỏng thứ BA, phát hiện 27/08/2026. Mục vẫn tồn tại và vẫn đủ nội dung,
+# nhưng `lastActivityAt` lệch so với mốc bản ghi cuối ⇒ tụt đáy Recents ⇒ người
+# dùng không tìm ra ⇒ tưởng MẤT hội thoại.
+# Ca thật: REDANCE-1715 (fork) ghi 13/08 11:35 trong khi nội dung tới 27/08 18:06
+# — lệch 14 ngày, hội thoại 33,2 MB nằm tận đáy danh sách.
+# Bước ① và ② không bắt được: chúng đo "có mục" và "đủ nội dung", không đo
+# "mục có nổi lên đúng chỗ".
+if [ -x "$ACTIVITY" ]; then
+  echo "③ THỨ TỰ DANH SÁCH (kéo mục chìm đáy lên)"
+  if [ "$APPLY" = 1 ]; then
+    if "$ACTIVITY" --apply 2>&1 | sed -n '/lệch/,$p' | sed 's/^/   /'; then :; fi
+  else
+    "$ACTIVITY" 2>&1 | sed -n '/lệch/,$p' | sed 's/^/   /' || true
+  fi
+  echo
 fi
 
 # ── KIỂM CHỨNG SAU KHI SỬA  ⭐ v3.3.0 ───────────────────────────────────────

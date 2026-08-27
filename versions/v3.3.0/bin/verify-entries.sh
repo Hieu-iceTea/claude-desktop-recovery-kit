@@ -120,9 +120,44 @@ if not QUIET:
         print(f"      khắc phục:  claude-history merge --id {sid} --repoint --apply")
         print()
 
-if bad:
-    print(f"⛔ {len(bad)} hội thoại đang THIẾU tin nhắn mới nhất.")
+# ── CHIỀU 2: mục có nổi lên đúng chỗ không ──────────────────────────────────
+# Mục đủ nội dung nhưng lastActivityAt lệch thì vẫn "mất" theo nghĩa người dùng
+# không tìm ra. Đo luôn ở đây để một lệnh trả lời trọn câu "tôi có mất gì không".
+import datetime as _dt
+sunk=[]
+for f in glob.glob(os.path.join(IDX,"local_*.json")):
+    try: d=json.load(open(f))
+    except Exception: continue
+    cli=d.get("cliSessionId")
+    if not cli: continue
+    g=glob.glob(os.path.join(PROJ,"*",cli+".jsonl"))
+    if not g: continue
+    lt=""
+    for line in open(g[0],errors="replace"):
+        ln=line.strip()
+        if not ln or '"timestamp"' not in ln: continue
+        try:o=json.loads(ln)
+        except Exception: continue
+        t=o.get("timestamp")
+        if t and t>lt: lt=t
+    if not lt: continue
+    try: real=int(_dt.datetime.fromisoformat(lt.replace("Z","+00:00")).timestamp()*1000)
+    except Exception: continue
+    cur=d.get("lastActivityAt") or 0
+    if (real-cur)/3600000.0 >= 6:
+        sunk.append(((real-cur)/86400000.0, d.get("title","")or"(không tên)", cli[:8]))
+sunk.sort(reverse=True)
+if not QUIET and sunk:
+    print(f"   ⚠️  {len(sunk)} mục CHÌM ĐÁY danh sách (lastActivityAt lệch):")
+    for drift,t,sid in sunk[:8]:
+        print(f"      lệch {drift:.1f} ngày · {sid} · {t[:48]}")
+    print(f"      khắc phục:  claude-history fix --apply")
+    print()
+
+if bad or sunk:
+    if bad: print(f"⛔ {len(bad)} hội thoại đang THIẾU tin nhắn mới nhất.")
+    if sunk: print(f"⚠️  {len(sunk)} mục chìm đáy — có mà không tìm ra.")
     print(f"   Chạy (lúc Claude đã tắt):  claude-history fix --apply")
     raise SystemExit(1)
-print("✅ Mọi hội thoại đều chứa tin nhắn mới nhất.")
+print("✅ Mọi hội thoại đều chứa tin nhắn mới nhất và nổi đúng vị trí.")
 PY

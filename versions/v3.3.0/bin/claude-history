@@ -37,6 +37,7 @@ DEDUP="$HERE/dedup-entries.sh"
 MERGE="$HERE/merge-branches.sh"
 FIXALL="$HERE/fix-all.sh"
 VERIFY="$HERE/verify-entries.sh"
+ACTIVITY="$HERE/fix-activity.sh"
 UNIFY="$HERE/setup-unified-sessions.sh"
 UNROLL="$HERE/rollback-unified-sessions.sh"
 
@@ -99,6 +100,7 @@ usage_all() {
   ─── DỌN ───
     verify-entries               ĐO xem có thiếu tin nhắn mới nhất không
     forget <mã>                  Gỡ mục VĨNH VIỄN (fix sẽ không tạo lại)
+    fix-activity                 Kéo mục chìm đáy danh sách lên đúng chỗ
 
   ─── KHÁC ───
     status                       Báo cáo trạng thái 4 lớp
@@ -122,6 +124,7 @@ case "$CMD" in
   quit)     exec "$QUIT" "$@" ;;
   status)   exec "$STATUS" "$@" ;;
   verify-entries) exec "$VERIFY" "$@" ;;
+  fix-activity)   exec "$ACTIVITY" "$@" ;;
 
   forget)
     # Gỡ mục VĨNH VIỄN. Gỡ file chỉ mục không thôi thì `fix` tạo lại — sự cố
