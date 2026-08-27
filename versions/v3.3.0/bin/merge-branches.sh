@@ -241,8 +241,35 @@ if REPOINT:
         print("⛔ Claude Desktop ĐANG CHẠY — không thể trỏ mục Recents.")
         print("   Thoát trước:  claude-history quit")
         raise SystemExit(1)
-    # nhánh GIÀU NHẤT theo số đoạn nội dung, ưu tiên mốc thời gian mới hơn khi hoà
-    best=max(sids, key=lambda s:(len(get(s)[1]), get(s)[3]))
+    # ── QUY TẮC BA TẦNG  ⭐ v3.3.0 ──────────────────────────────────────────
+    # YÊU CẦU DUY NHẤT của người dùng: sau khi khởi động lại Claude Desktop,
+    # KHÔNG mất tin nhắn nào — nhất là tin vừa mới nhắn.
+    #
+    # VÌ SAO KHÔNG chọn "nhánh giàu nhất" như bản trước: đo 27/08/2026 cho thấy
+    # mỗi nhánh chỉ chứa MỘT LÁT thời gian, không chép lại nội dung cũ —
+    #     d5bc396e  09:47 → 15:24   1.378 bản ghi
+    #     c929c1c8  16:27 → 16:31   1.328 bản ghi   ← lát MỚI NHẤT, gầy
+    # Nhánh giàu nhất thường là bản gộp cũ, KHÔNG chứa lát mới. Chọn nó là
+    # mất đúng phần vừa nhắn — chính lỗi người dùng gặp mỗi lần mở lại.
+    #
+    # Tầng ①: chỉ xét nhánh CÓ CHỨA bản ghi mới nhất của cả chuỗi (ràng buộc CỨNG)
+    # Tầng ②: trong số đó, chọn nhánh nhiều đoạn nội dung nhất
+    # Tầng ③: không nhánh nào chứa nó ⇒ báo cần GỘP (thoát mã 2 để fix biết)
+    _newest_ts=""; _newest_key=None
+    for _s in sids:
+        for _o in lines_of(_s):
+            _ts=_o.get("timestamp") or ""
+            if _ts>_newest_ts:
+                _k=key_of(_o)
+                if _k: _newest_ts=_ts; _newest_key=_k
+    _have=[s for s in sids if _newest_key and _newest_key in get(s)[1]]
+    if not _have:
+        print(f"   ⚠️  KHÔNG nhánh nào chứa bản ghi mới nhất ({_newest_ts[:16].replace('T',' ')}).")
+        print(f"      Trỏ thôi là chưa đủ — cần GỘP:")
+        print(f"      claude-history merge --id {cur[:8]} --apply --point")
+        raise SystemExit(2)
+    best=max(_have, key=lambda s:(len(get(s)[1]), get(s)[3]))
+    print(f"   tin nhắn mới nhất: {_newest_ts[:16].replace('T',' ')} · {len(_have)}/{len(sids)} nhánh có chứa")
     if best==cur:
         print(f"   ✅ mục đã trỏ vào nhánh đầy đủ nhất — không cần đổi.")
         raise SystemExit(0)

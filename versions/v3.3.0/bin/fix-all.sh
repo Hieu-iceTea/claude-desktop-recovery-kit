@@ -191,7 +191,7 @@ if [ "$SCOPE" != list ]; then
       i=$((i+1)); t1=$SECONDS
       printf "   [%s/%s] %s\n" "$i" "$total" "$title"
       printf "         %s · %s nhánh  " "${id:0:8}" "$nbr"
-      out="$("$MERGE" --id "$id" --repoint --apply 2>&1)"
+      out="$("$MERGE" --id "$id" --repoint --apply 2>&1)"; rc=$?
       el=$(( SECONDS - t1 ))
       if printf '%s' "$out" | grep -q "Đã trỏ mục Recents"; then
         gain="$(printf '%s' "$out" | grep -oE '\([0-9]+ đoạn · [0-9]+ đoạn CHỮ\)' | head -1)"
@@ -199,6 +199,23 @@ if [ "$SCOPE" != list ]; then
         ok=$((ok+1)); merged=1
       elif printf '%s' "$out" | grep -q "không cần đổi"; then
         printf "✅ đã đúng nhánh   ⏱ %s\n" "$(hms $el)"; same=$((same+1))
+      elif [ "$rc" = 2 ]; then
+        # ── TẦNG ③: không nhánh nào chứa bản ghi mới nhất ⇒ GỘP ─────────────
+        # Đây là lúc DUY NHẤT gộp thật sự cần. Yêu cầu của người dùng là không
+        # mất tin nhắn vừa nhắn; trỏ không đạt được thì phải gộp, không bỏ qua.
+        printf "⚠️  trỏ không đủ → gộp... "
+        out2="$("$MERGE" --id "$id" --apply --point 2>&1)"
+        el=$(( SECONDS - t1 ))
+        if printf '%s' "$out2" | grep -q "Đã trỏ mục Recents"; then
+          g2="$(printf '%s' "$out2" | grep -oE 'đoạn CHỮ: [0-9]+ \(trước: [0-9]+\)' | head -1)"
+          printf "✅ gộp %s   ⏱ %s\n" "${g2:-xong}" "$(hms $el)"
+          ok=$((ok+1)); merged=1
+        else
+          why="$(printf '%s' "$out2" | grep -oE '⛔ File kết quả [0-9]+ MB.*' | head -1)"
+          printf "⛔ gộp không được   ⏱ %s\n" "$(hms $el)"
+          [ -z "$why" ] || echo "         ${why}"
+          fails=$((fails+1))
+        fi
       else
         printf "⛔ lỗi   ⏱ %s\n" "$(hms $el)"; fails=$((fails+1))
       fi
