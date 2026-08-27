@@ -32,7 +32,7 @@
 set -uo pipefail
 PROJ="$HOME/.claude/projects"
 IDX="$HOME/Library/Application Support/Claude/claude-code-sessions-shared"
-MODE=list; ID=""; APPLY=0; FORCE=0; POINT=0
+MODE=list; ID=""; APPLY=0; FORCE=0; POINT=0; REPOINT=0
 SINCE=""; UNTIL=""; TSUFFIX=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -41,6 +41,7 @@ while [ $# -gt 0 ]; do
     --id)    MODE=one; shift; ID="${1:-}" ;;
     --apply) APPLY=1 ;;
     --point) POINT=1 ;;
+    --repoint) REPOINT=1 ;;   # chỉ TRỎ sang nhánh sẵn có, KHÔNG dựng file
     --force) FORCE=1 ;;
     --since) shift; SINCE="${1:-}" ;;
     --until) shift; UNTIL="${1:-}" ;;
@@ -51,11 +52,12 @@ while [ $# -gt 0 ]; do
   shift
 done
 PROJ="$PROJ" IDX="$IDX" MODE="$MODE" ID="$ID" APPLY="$APPLY" FORCE="$FORCE" POINT="$POINT" \
-SINCE="${SINCE:-}" UNTIL="${UNTIL:-}" TSUFFIX="${TSUFFIX:-}" /usr/bin/python3 - <<'PY'
+SINCE="${SINCE:-}" UNTIL="${UNTIL:-}" TSUFFIX="${TSUFFIX:-}" REPOINT="$REPOINT" /usr/bin/python3 - <<'PY'
 import json,glob,os,uuid,hashlib,collections,datetime,shutil
 PROJ=os.environ["PROJ"]; IDX=os.environ["IDX"]
 MODE=os.environ["MODE"]; ID=os.environ["ID"]; APPLY=os.environ["APPLY"]=="1"
 POINT=os.environ.get("POINT")=="1"
+REPOINT=os.environ.get("REPOINT")=="1"
 
 def _claude_running():
     """CỐ Ý dùng `ps -Ao args`, KHÔNG dùng `pgrep`: đo thực tế trên macOS,
@@ -218,6 +220,53 @@ print(f"🧩 {title}")
 print(f"   mục Recents đang mở {cur[:8]} · {n}/{u} bản ghi · thiếu {miss}")
 print(f"   trong đó đoạn CHỮ người đọc được: {_tn}/{_tu}")
 print(f"   nhánh nguồn: {len(sids)}")
+
+# ── --repoint: TRỎ sang nhánh SẴN CÓ, KHÔNG dựng file  ⭐ v3.3.0 ────────────
+# VÌ SAO ĐÂY LÀ MẶC ĐỊNH MỚI: đo 27/08/2026 cho thấy Claude Desktop xử lý hội
+# thoại rất dài bằng cách NÉN TẠI CHỖ, giữ đúng MỘT mục Recents —
+#     REDANCE-1715: 715 file trên đĩa · 1 mục trong danh sách
+#     compact_boundary: preTokens 924.674 → postTokens 14.801  (giảm 62 lần)
+# Việc app KHÔNG tự làm là: sau khi thoát/mở lại, mục Recents tụt về nhánh cũ.
+# Chỉ cần TRỎ lại là xong — không cần gộp.
+#
+# Trỏ hơn hẳn gộp ở mọi mặt đo được:
+#   · không tạo file  · ctx giữ nguyên  · tức thì  · hoàn tác bằng một lệnh cp
+#   · nhánh app tự sinh CHƯA BAO GIỜ chết; chỉ bản gộp mới có lần chết (ece09c56)
+# Đo thật: gộp 58dfea02 cho 13.377 đoạn chữ nhưng trần hiển thị 48 MiB chỉ cho
+# thấy 550 (4%) — đổi 274 lấy 550 kèm file 554 MB là không đáng.
+if REPOINT:
+    # Chốt "app đang chạy" chỉ áp cho lúc GHI. Xem trước là chỉ đọc, phải chạy
+    # được khi app đang mở — nếu không thì không ai xem trước được bao giờ.
+    if APPLY and _claude_running():
+        print("⛔ Claude Desktop ĐANG CHẠY — không thể trỏ mục Recents.")
+        print("   Thoát trước:  claude-history quit")
+        raise SystemExit(1)
+    # nhánh GIÀU NHẤT theo số đoạn nội dung, ưu tiên mốc thời gian mới hơn khi hoà
+    best=max(sids, key=lambda s:(len(get(s)[1]), get(s)[3]))
+    if best==cur:
+        print(f"   ✅ mục đã trỏ vào nhánh đầy đủ nhất — không cần đổi.")
+        raise SystemExit(0)
+    b_all=len(get(best)[1]); b_txt=len(get(best)[2])
+    print(f"   → trỏ sang {best[:8]}  ({b_all} đoạn · {b_txt} đoạn CHỮ)")
+    print(f"     thay cho {cur[:8]}  ({n} đoạn · {_tn} đoạn CHỮ)")
+    if not APPLY:
+        print(f"\n🔎 Xem trước — chưa ghi. Thêm --apply để trỏ.")
+        raise SystemExit(0)
+    target=None
+    for f in glob.glob(os.path.join(IDX,"local_*.json")):
+        try: d=json.load(open(f))
+        except Exception: continue
+        if d.get("cliSessionId")==cur: target=(f,d); break
+    if not target:
+        print(f"⛔ Không thấy mục Recents nào trỏ vào {cur[:8]}."); raise SystemExit(1)
+    f,d=target
+    bak=f+".bak-"+datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    shutil.copy2(f,bak)
+    d["cliSessionId"]=best
+    json.dump(d,open(f,"w"),ensure_ascii=False,indent=2)
+    print(f"\n✅ Đã trỏ mục Recents sang nhánh đầy đủ nhất. KHÔNG tạo file nào.")
+    print(f"   Hoàn tác: cp '{bak}' '{f}'")
+    raise SystemExit(0)
 
 # ── LỌC THEO GIAI ĐOẠN (--since / --until) ─────────────────────────────
 # Hội thoại rất dài (đo thật: REDANCE-1715 có 699 nhánh / 2941 MB) không thể gộp

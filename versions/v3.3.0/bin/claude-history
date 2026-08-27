@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# claude-history  (v3.1.0) — MỘT lệnh gốc cho toàn bộ kit
+# claude-history  (v3.3.0) — MỘT lệnh gốc cho toàn bộ kit
 #
 # KHÔNG có đuôi .sh là CỐ Ý — theo Google Shell Style Guide: file thực thi mà
 # người dùng gọi trực tiếp thì KHÔNG nên có đuôi (không cần biết nó viết bằng
@@ -36,6 +36,7 @@ LOST="$HERE/restore-lost-entries.sh"
 DEDUP="$HERE/dedup-entries.sh"
 MERGE="$HERE/merge-branches.sh"
 FIXALL="$HERE/fix-all.sh"
+VERIFY="$HERE/verify-entries.sh"
 UNIFY="$HERE/setup-unified-sessions.sh"
 UNROLL="$HERE/rollback-unified-sessions.sh"
 
@@ -54,6 +55,7 @@ claude-history v$VER — giữ lịch sử Claude Desktop không bị mất
 
   HẰNG NGÀY
     claude-history save          Lưu một bản vào kho git
+    claude-history verify-entries  ĐO xem có thiếu tin nhắn mới nhất không
 
   Tất cả lệnh:  claude-history help all
 EOF
@@ -94,6 +96,10 @@ usage_all() {
     Lệnh unify trỏ mọi thư mục đó về MỘT danh sách chung nên không mất nữa.
     Chạy lại sau khi: thêm tài khoản · thêm team · Claude Desktop cập nhật.
 
+  ─── DỌN ───
+    verify-entries               ĐO xem có thiếu tin nhắn mới nhất không
+    forget <mã>                  Gỡ mục VĨNH VIỄN (fix sẽ không tạo lại)
+
   ─── KHÁC ───
     status                       Báo cáo trạng thái 4 lớp
     quit --reopen                Thoát rồi mở lại luôn
@@ -115,6 +121,35 @@ case "$CMD" in
 
   quit)     exec "$QUIT" "$@" ;;
   status)   exec "$STATUS" "$@" ;;
+  verify-entries) exec "$VERIFY" "$@" ;;
+
+  forget)
+    # Gỡ mục VĨNH VIỄN. Gỡ file chỉ mục không thôi thì `fix` tạo lại — sự cố
+    # 27/08/2026: mục "⤷ kho gộp" mọc lại sau 1 giờ 17 phút. Phải đặt dấu
+    # `deleted_<id>` — cơ chế sẵn có của app (47 file đã tồn tại), và cả
+    # restore-lost-entries lẫn repair đều tôn trọng nó.
+    SID="${1:-}"
+    [ -n "$SID" ] || { echo "⛔ Cần mã phiên: claude-history forget <mã>" >&2; exit 2; }
+    SID="$SID" /usr/bin/python3 - <<'PYF'
+import json,glob,os,sys,time
+D=os.path.expanduser("~/Library/Application Support/Claude/claude-code-sessions-shared")
+want=os.environ["SID"]
+hits=[]
+for f in glob.glob(os.path.join(D,"local_*.json")):
+    try: d=json.load(open(f))
+    except Exception: continue
+    c=d.get("cliSessionId") or ""
+    if c.startswith(want): hits.append((f,d,c))
+if not hits:
+    print(f"⛔ Không thấy mục nào trỏ vào '{want}'."); sys.exit(1)
+for f,d,c in hits:
+    os.rename(f,f+".removed")
+    open(os.path.join(D,"deleted_"+c),"w").write(str(int(time.time()*1000)))
+    print(f"  đã gỡ: {d.get('title')}")
+    print(f"    dấu deleted_{c[:8]}… — fix/repair sẽ KHÔNG tạo lại")
+print("  Transcript trên đĩa VẪN NGUYÊN. Hoàn tác: xoá dấu deleted_, đổi .removed về .json")
+PYF
+    ;;
   merge)    exec "$MERGE" "$@" ;;
   unify)
     # KHÔNG viết script mới cho việc này. `setup-unified-sessions.sh` (từ v2.0.0,

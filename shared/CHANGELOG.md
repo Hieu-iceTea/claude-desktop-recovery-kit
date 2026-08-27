@@ -1,3 +1,103 @@
+# v3.3.0 — 27/08/2026
+
+## ⭐ A1 · Bảo toàn + khôi phục ĐIỂM CẮT NGỮ CẢNH — lỗi gốc của mọi sự cố
+
+`merge-branches.sh` (v3.1.0–v3.2.0) nối MỌI bản ghi thành một chuỗi thẳng:
+
+```python
+o["parentUuid"]=prev; prev=o["uuid"]
+```
+
+Việc đó GHI ĐÈ `parentUuid=None` tại các bản ghi `compact_boundary` — chính giá
+trị `None` đó là ĐIỂM CẮT app dùng để quyết định gửi bao nhiêu ngữ cảnh.
+
+Bằng chứng đọc từ transcript (58dfea02):
+
+```
+type=system  subtype=compact_boundary
+parentUuid         None
+logicalParentUuid  2f2de111…
+preTokens          924.674  →  postTokens  14.801
+cumulativeDroppedTokens  13.088.700
+```
+
+Xoá điểm cắt ⇒ app phải gửi cả 13 triệu token đã bỏ ⇒ vỡ trần. Đo thật:
+`ece09c56` sau khi gộp KHÔNG nhắn tiếp được; `ae968d22` (51 MB, cùng hội thoại,
+chưa gộp) vẫn nhắn bình thường.
+
+Sửa: bỏ qua `compact_boundary` khi nối chuỗi, giữ `logicalParentUuid`, và
+**KHÔI PHỤC** `parentUuid=None` cho các điểm cắt đã bị bản cũ làm hỏng.
+Phép kiểm ④ đổi từ "đúng 1 gốc" sang "số gốc = 1 + số điểm cắt".
+Thêm phép kiểm ⑩: mọi `compact_boundary` phải còn `parentUuid=None`.
+
+Kiểm chứng trên 699 nhánh: giữ 4 điểm cắt · 10/10 phép kiểm đạt.
+
+## ⭐ B1 · Đổi mặc định từ GỘP sang TRỎ
+
+Đo cách gốc của Claude Desktop: **app KHÔNG tách hội thoại dài**.
+
+```
+REDANCE-1715 · 715 file trên đĩa · 1 mục trong danh sách
+```
+
+App nén tại chỗ và giữ một mục. Việc app không tự lo là: sau khi thoát/mở lại,
+mục Recents tụt về nhánh cũ. **Chỉ cần trỏ lại.**
+
+Thêm `merge --repoint`: trỏ mục sang nhánh đầy đủ nhất, KHÔNG dựng file.
+`fix --apply` nay dùng chế độ này thay vì gộp.
+
+| | gộp | trỏ |
+|---|---|---|
+| tạo file | hàng chục–trăm MB | không |
+| ctx sau đó | tăng 5–36 lần | giữ nguyên |
+| rủi ro | đã giết ece09c56 | không có |
+| hoàn tác | .bak + xoá file | một lệnh cp |
+
+Đo trên 58dfea02: gộp cho 13.377 đoạn chữ nhưng trần hiển thị 48 MiB chỉ cho
+thấy 550 (4%). Trỏ cho 609 đoạn chữ, không tạo file.
+
+## ⭐ C1 · Phép kiểm chứng tự động — `verify-entries.sh`
+
+Ba sự cố ngày 27/08 đều cùng hình dạng: script báo "✅ xong", người dùng mở app
+lên thì THIẾU. Gốc rễ: script chưa bao giờ TỰ ĐO LẠI sau khi sửa.
+
+Phép đo: với mỗi hội thoại nhiều nhánh, hỏi *"mục Recents có chứa BẢN GHI MỚI
+NHẤT của chuỗi không?"*. `fix --apply` nay chạy phép này sau khi sửa.
+
+Chạy lần đầu đã bắt được 2 hội thoại thiếu mà `fix --apply` trước đó bỏ sót.
+
+## A3 · Bỏ mọi chốt theo MB
+
+`PREFILTER_MB=1200` lọc theo MB nguồn — không tương quan với gì cả:
+
+```
+58dfea02   6,6 MB  →  ctx đỉnh 919.666
+12345a85    61 MB  →  ctx đỉnh 847.935
+```
+
+Chế độ TRỎ không dựng file nên không còn gì để lọc trước.
+
+## A4 · `--list-only` tự cảnh báo
+
+Cờ này đặt `SCOPE=list` ⇒ bỏ TOÀN BỘ khối ② — đúng khối sửa nội dung. Dùng nó
+vì tưởng "an toàn hơn" là sự cố thứ hai ngày 27/08. Nay nó tự nói ra.
+
+## C3 · `claude-history forget <mã>` — gỡ mục vĩnh viễn
+
+Gỡ file chỉ mục không thôi thì `fix` tạo lại (mục "⤷ kho gộp" mọc lại sau 1 giờ
+17 phút). Lệnh này đặt dấu `deleted_<id>` — cơ chế sẵn có của app mà cả
+`restore-lost-entries` lẫn `repair` đều tôn trọng.
+
+## Ghi nhận sai sót của phiên bản trước
+
+- Mọi con số "token" báo cáo trong quá trình phát triển v3.1.0–v3.2.0 là **ước
+  lượng ký-tự÷4 tự chế**, sai tới **51 lần** so với `usage` thật do API trả về.
+  Số thật đã có sẵn trong transcript (`usage`, `compactMetadata`) từ đầu.
+- Kết luận "máy này không có `compact_boundary`" là **sai** — lệnh tìm hỏng.
+  Thực tế có **1.062 file** chứa nó.
+
+---
+
 # v3.1.0 — 27/08/2026
 
 ## Hiển thị: tên hội thoại thay vì chỉ mã

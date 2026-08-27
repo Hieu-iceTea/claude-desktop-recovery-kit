@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# fix-all.sh  (v3.1.0) — khôi phục TẤT CẢ trong một lệnh
+# fix-all.sh  (v3.3.0) — khôi phục TẤT CẢ trong một lệnh
 #
 # Người dùng gần như luôn muốn "sửa hết", không sửa lẻ từng mục. Trước bản này
 # phải nhớ và chạy tay 5 lệnh theo đúng thứ tự — dễ bỏ sót một bước (đã xảy ra:
@@ -28,6 +28,7 @@ LOST="$HERE/restore-lost-entries.sh"
 REPAIR="$HERE/repair-missing-sessions.sh"
 DEDUP="$HERE/dedup-entries.sh"
 MERGE="$HERE/merge-branches.sh"
+VERIFY="$HERE/verify-entries.sh"
 STORE="$HERE/store.sh"
 
 # ── ĐỒNG HỒ ─────────────────────────────────────────────────────────────────
@@ -46,21 +47,27 @@ hms() {  # 3725 → "1g 02m 05s"
   fi
 }
 
-# Chuỗi có nguồn lớn hơn ngưỡng này thì KHÔNG dựng thử, chỉ in hướng dẫn.
-# Đây là bộ LỌC TRƯỚC, không phải phép đo — ngưỡng thật vẫn là phép ⑨ đo trên
-# file đã dựng. Đo ngày 27/08/2026 trên REDANCE-1715, tỉ lệ nguồn→kết quả nằm
-# trong khoảng 16–21%:   995MB→210MB · 1129MB→225MB · 868MB→139MB · 3096MB→554MB
-# 1200 MB nguồn ứng với ~250 MB kết quả, đúng bằng ngưỡng của merge-branches.
-# Đoán sai theo hướng nào cũng vô hại: quá chặt thì người dùng tự chạy tay, quá
-# lỏng thì phép ⑨ vẫn chặn lại như cũ.
-PREFILTER_MB=1200
+# v3.3.0 — ĐÃ BỎ `PREFILTER_MB`. Nó lọc theo MB nguồn, mà MB KHÔNG tương quan
+# với thứ quyết định điều gì cả. Đo thật 27/08/2026:
+#     58dfea02   6,6 MB  →  ctx đỉnh 919.666
+#     12345a85    61 MB  →  ctx đỉnh 847.935
+# File nhỏ hơn 9 lần lại tốn ctx nhiều hơn. Từ v3.3.0 bước ② chỉ TRỎ nên không
+# dựng file, không có gì để lọc trước.
 
 APPLY=0; SCOPE=both
 for a in "$@"; do
   case "$a" in
     --apply)        APPLY=1 ;;
     --dry-run)      APPLY=0 ;;
-    --list-only)    SCOPE=list ;;
+    --list-only)    SCOPE=list
+      # SỰ CỐ 27/08/2026: cờ này được dùng vì tưởng "an toàn hơn". Nó đặt
+      # SCOPE=list ⇒ BỎ TOÀN BỘ khối ② — đúng khối trỏ mục về nhánh đầy đủ.
+      # Người dùng chạy xong vẫn thiếu nội dung, phải chạy lại `fix --apply`.
+      echo "⚠️  --list-only KHÔNG sửa lỗi thiếu tin nhắn mới nhất." >&2
+      echo "    Nó chỉ dọn danh sách. Sau khi thoát/mở lại Claude, dùng:" >&2
+      echo "        claude-history fix --apply" >&2
+      echo >&2
+      ;;
     --content-only) SCOPE=content ;;
     -h|--help)
       cat <<'EOF'
@@ -145,60 +152,58 @@ if [ "$SCOPE" != content ]; then
 fi
 
 # ── ② NỘI DUNG ──────────────────────────────────────────────────────────────
+# v3.3.0 — ĐỔI MẶC ĐỊNH TỪ **GỘP** SANG **TRỎ**.
+#
+# VÌ SAO: đo 27/08/2026 cho thấy Claude Desktop xử lý hội thoại rất dài bằng
+# cách NÉN TẠI CHỖ và giữ đúng MỘT mục Recents:
+#     REDANCE-1715 · 715 file trên đĩa · 1 mục trong danh sách
+#     compact_boundary: preTokens 924.674 → postTokens 14.801 (giảm 62 lần)
+# App KHÔNG tách hội thoại. Việc duy nhất app không tự lo là: sau khi thoát và
+# mở lại, mục Recents tụt về nhánh cũ. Chỉ cần TRỎ LẠI là xong.
+#
+# Trỏ hơn gộp ở mọi mặt đo được:
+#     không tạo file · ctx giữ nguyên · tức thì · hoàn tác bằng một lệnh cp
+#     nhánh app tự sinh CHƯA BAO GIỜ chết; chỉ bản gộp mới có lần chết (ece09c56)
+# Còn gộp thì: đo trên 58dfea02 cho 13.377 đoạn chữ nhưng trần hiển thị 48 MiB
+# chỉ cho thấy 550 (4%). Đổi 274 lấy 550 kèm file 554 MB — không đáng.
+#
+# Muốn gộp thật thì gọi riêng:  claude-history merge --id <mã> --apply --point
 if [ "$SCOPE" != list ]; then
-  echo "② NỘI DUNG (hợp nhất các nhánh bị tách)"
-  # `--ids` trả 4 cột ngăn bằng TAB: mã · tên · MB nguồn · số nhánh.
-  # Tên là thứ người dùng NHÌN THẤY trong Recents; chỉ in mã 8 ký tự thì không
-  # thể biết cái vừa bị bỏ qua có quan trọng không, nên cũng không quyết được gì.
+  echo "② NỘI DUNG (trỏ mục về nhánh đầy đủ nhất)"
   IDS="$("$MERGE" --ids 2>/dev/null)"
   total="$(printf '%s\n' "$IDS" | grep -c . || true)"
   if [ "${total:-0}" = 0 ]; then
-    echo "   ✅ mọi hội thoại đã đủ nội dung"
+    echo "   ✅ mọi hội thoại đã trỏ đúng nhánh đầy đủ nhất"
   elif [ "$APPLY" = 0 ]; then
-    echo "   $total hội thoại đang thiếu nội dung:"
+    echo "   $total hội thoại có nhánh đầy đủ hơn bản đang mở:"
+    # shellcheck disable=SC2034
     while IFS="$(printf '\t')" read -r id title mb nbr; do
       [ -n "$id" ] || continue
       printf "     %s  %s\n" "${id:0:8}" "$title"
-      if [ "${mb:-0}" -gt "$PREFILTER_MB" ]; then
-        printf "               %s nhánh · %s MB — QUÁ LỚN, sẽ bỏ qua, cần gộp theo giai đoạn\n" "$nbr" "$mb"
-      else
-        printf "               %s nhánh · %s MB\n" "$nbr" "$mb"
-      fi
+      printf "               %s nhánh — sẽ TRỎ sang bản đầy đủ nhất (không tạo file)\n" "$nbr"
     done <<< "$IDS"
     echo "   Xem chi tiết:  claude-history merge --list"
   else
-    # Một chuỗi hỏng KHÔNG dừng cả lượt — báo rồi đi tiếp, cuối cùng tổng kết.
-    ok=0; skip=0; i=0; merged=0
+    ok=0; same=0; i=0; merged=0
+    # shellcheck disable=SC2034  # cột mb giữ trong định dạng --ids, chế độ TRỎ không dùng
     while IFS="$(printf '\t')" read -r id title mb nbr; do
       [ -n "$id" ] || continue
       i=$((i+1)); t1=$SECONDS
       printf "   [%s/%s] %s\n" "$i" "$total" "$title"
-      printf "         %s · %s nhánh · %s MB  " "${id:0:8}" "$nbr" "$mb"
-      # LỌC TRƯỚC: chuỗi quá lớn thì đừng dựng thử. Dựng xong mới từ chối ở phép
-      # ⑨ tốn ~2,5 phút và lặp lại mỗi lượt chạy (đo thật 26/08 với 58dfea02).
-      if [ "${mb:-0}" -gt "$PREFILTER_MB" ]; then
-        echo "⏭  bỏ qua — quá lớn"
-        echo "         Gộp theo giai đoạn, mỗi giai đoạn một tên riêng:"
-        echo "         claude-history merge --id ${id:0:8} --apply --point \\"
-        echo "             --since <YYYY-MM-DD> --until <YYYY-MM-DD> --title-suffix \"(MM/YYYY)\""
-        skip=$((skip+1)); continue
-      fi
-      out="$("$MERGE" --id "$id" --apply --point 2>&1)"
+      printf "         %s · %s nhánh  " "${id:0:8}" "$nbr"
+      out="$("$MERGE" --id "$id" --repoint --apply 2>&1)"
       el=$(( SECONDS - t1 ))
       if printf '%s' "$out" | grep -q "Đã trỏ mục Recents"; then
-        gain="$(printf '%s' "$out" | grep -oE 'đoạn CHỮ: [0-9]+ \(trước: [0-9]+\)' | head -1)"
-        printf "✅ %s   ⏱ %s\n" "${gain:-xong}" "$(hms $el)"
+        gain="$(printf '%s' "$out" | grep -oE '\([0-9]+ đoạn · [0-9]+ đoạn CHỮ\)' | head -1)"
+        printf "✅ trỏ sang %s   ⏱ %s\n" "${gain:-bản đầy đủ hơn}" "$(hms $el)"
         ok=$((ok+1)); merged=1
-      elif printf '%s' "$out" | grep -q "QUÁ LỚN\|> ngưỡng"; then
-        printf "⏭  bỏ qua — kết quả vượt ngưỡng   ⏱ %s\n" "$(hms $el)"
-        echo "         claude-history merge --id ${id:0:8} --apply --point \\"
-        echo "             --since <YYYY-MM-DD> --until <YYYY-MM-DD> --title-suffix \"(MM/YYYY)\""
-        skip=$((skip+1))
+      elif printf '%s' "$out" | grep -q "không cần đổi"; then
+        printf "✅ đã đúng nhánh   ⏱ %s\n" "$(hms $el)"; same=$((same+1))
       else
         printf "⛔ lỗi   ⏱ %s\n" "$(hms $el)"; fails=$((fails+1))
       fi
     done <<< "$IDS"
-    echo "   ✅ hợp nhất $ok · bỏ qua $skip"
+    echo "   ✅ trỏ lại $ok · đã đúng sẵn $same"
 
     # ── DỌN TRÙNG LẦN HAI ────────────────────────────────────────────────────
     # BẮT BUỘC, không phải cho chắc. Hợp nhất sinh ra bản PHỦ TRÙM bản cũ, nên
@@ -221,6 +226,22 @@ fi
 # ── Lưu một bản vào kho git để có điểm lùi cho lần sau ──────────────────────
 if [ "$APPLY" = 1 ] && [ -x "$STORE" ]; then
   "$STORE" save >/dev/null 2>&1 && echo "💾 Đã lưu bản sau khi sửa vào kho git."
+fi
+
+# ── KIỂM CHỨNG SAU KHI SỬA  ⭐ v3.3.0 ───────────────────────────────────────
+# Ba sự cố ngày 27/08/2026 đều có chung một hình dạng: script báo "✅ xong",
+# người dùng mở app lên thì THIẾU. Gốc rễ là script chưa bao giờ tự đo lại.
+# Từ nay: sửa xong thì ĐO, và nếu còn thiếu thì nói ra ngay tại đây.
+if [ "$APPLY" = 1 ] && [ -x "$VERIFY" ]; then
+  echo "🔎 Kiểm chứng lại sau khi sửa..."
+  if "$VERIFY" >/tmp/.ch-verify.$$ 2>&1; then
+    echo "   ✅ mọi hội thoại đều chứa tin nhắn mới nhất"
+  else
+    sed -n '/⛔/,$p' /tmp/.ch-verify.$$ | head -20
+    fails=$((fails+1))
+  fi
+  rm -f /tmp/.ch-verify.$$
+  echo
 fi
 
 echo "──────────────────────────────────────────────"
