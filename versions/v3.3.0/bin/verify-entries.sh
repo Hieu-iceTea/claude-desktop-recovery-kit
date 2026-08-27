@@ -32,6 +32,10 @@ done
 
 QUIET="$QUIET" /usr/bin/python3 - <<'PY'
 import json,glob,os,hashlib,collections
+import datetime as _dt
+
+# Hội thoại có bản ghi mới hơn ngần này phút thì coi là ĐANG CHẠY, không báo thiếu.
+LIVE_MIN=20
 QUIET=os.environ.get("QUIET")=="1"
 PROJ=os.path.expanduser("~/.claude/projects")
 IDX=os.path.expanduser("~/Library/Application Support/Claude/claude-code-sessions-shared")
@@ -44,17 +48,25 @@ for f in glob.glob(os.path.join(IDX,"local_*.json")):
     if c: idx[c]=d.get("title","") or "(không tên)"
 
 def title_of(p):
+    """Tiêu đề CUỐI CÙNG trong file — PHẢI khớp cách merge-branches.sh gom nhóm.
+
+    LỖI 27/08/2026: bản đầu đọc tiêu đề ĐẦU rồi dừng sớm (i>500). Khi hội thoại
+    được đổi tên (fork rồi đặt tên mới), tiêu đề đầu và cuối KHÁC NHAU:
+        9deec795  đầu 'REDANCE-1715 Mail investigation'
+                  cuối 'REDANCE-1715 Mail investigation (fork) - bù devkit'
+    Hai script gom nhóm khác nhau ⇒ `fix` báo "đã đúng nhánh" trong khi
+    `verify` báo "thiếu 53.097 đoạn". Cả hai đều đúng theo cách gom của mình,
+    và người dùng nhận hai kết luận mâu thuẫn.
+    Một phép đo chỉ có nghĩa khi nó dùng CÙNG một thước với phép sửa."""
     t=None
-    with open(p,errors="replace") as fh:
-        for i,line in enumerate(fh):
-            if i>500: break
-            s=line.strip()
-            if not s: continue
-            try:o=json.loads(s)
-            except Exception: continue
-            ty=o.get("type")
-            if ty=="custom-title" and o.get("customTitle"): return o["customTitle"]
-            if ty=="ai-title" and o.get("aiTitle"): t=t or o["aiTitle"]
+    for line in open(p,errors="replace"):
+        s=line.strip()
+        if not s: continue
+        try:o=json.loads(s)
+        except Exception: continue
+        ty=o.get("type")
+        if ty=="custom-title" and o.get("customTitle"): t=o["customTitle"]
+        elif ty=="ai-title" and o.get("aiTitle"): t=t or o["aiTitle"]
     return t
 
 def key(o):
@@ -93,7 +105,7 @@ for p in glob.glob(os.path.join(PROJ,"*","*.jsonl")):
     t=title_of(p)
     if t: grp[(os.path.dirname(p),t.strip().lower())].append(p)
 
-bad=[]; good=0; solo=0
+bad=[]; good=0; solo=0; live=0
 for k,ps in grp.items():
     cur=[p for p in ps if os.path.basename(p)[:-6] in idx]
     if not cur: continue
@@ -103,6 +115,17 @@ for k,ps in grp.items():
     nk=next(d[2] for d in data.values() if d[1]==nts)
     if any(nk in data[p][0] for p in cur):
         good+=1; continue
+    # ── HỘI THOẠI ĐANG CHẠY thì bỏ qua ──────────────────────────────────────
+    # Hội thoại bạn đang mở luôn sinh bản ghi mới trong lúc script chạy, nên
+    # LUÔN bị báo thiếu. Báo động giả kiểu đó nguy hiểm: quen thấy ⛔ mãi thì
+    # sẽ bỏ qua cả lúc thiếu thật. Nó tự đúng ở lần `fix --apply` sau khi thoát.
+    try:
+        _age=(_dt.datetime.now(_dt.timezone.utc)
+              - _dt.datetime.fromisoformat(nts.replace("Z","+00:00"))).total_seconds()/60
+    except Exception:
+        _age=1e9
+    if _age <= LIVE_MIN:
+        live+=1; continue
     uni=set().union(*[d[0] for d in data.values()])
     curfp=set().union(*[data[p][0] for p in cur])
     sid=os.path.basename(cur[0])[:-6]
@@ -113,7 +136,9 @@ if not QUIET:
     print("🔎 KIỂM CHỨNG — mục Recents có chứa bản ghi MỚI NHẤT không?\n")
     print(f"   ✅ đủ tin nhắn mới nhất : {good}")
     print(f"   ⛔ THIẾU                : {len(bad)}")
-    print(f"   ·  hội thoại một nhánh  : {solo} (không có gì để so)\n")
+    print(f"   ·  hội thoại một nhánh  : {solo} (không có gì để so)")
+    if live: print(f"   ·  đang chạy, bỏ qua    : {live} (tự đúng ở lần fix sau khi thoát)")
+    print()
     for miss,t,sid,best,ts in sorted(bad,reverse=True):
         print(f"   ⛔ {t[:52]}")
         print(f"      thiếu {miss} đoạn · mục trỏ {sid} · bản đủ nhất {best} · mới nhất {ts.replace('T',' ')}")
