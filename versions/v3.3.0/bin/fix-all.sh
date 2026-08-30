@@ -198,8 +198,10 @@ if [ "$SCOPE" != list ]; then
         gain="$(printf '%s' "$out" | grep -oE '\([0-9]+ đoạn · [0-9]+ đoạn CHỮ\)' | head -1)"
         printf "✅ trỏ sang %s   ⏱ %s\n" "${gain:-bản đầy đủ hơn}" "$(hms $el)"
         ok=$((ok+1)); merged=1
-      elif printf '%s' "$out" | grep -q "không cần đổi"; then
-        printf "✅ đã đúng nhánh   ⏱ %s\n" "$(hms $el)"; same=$((same+1))
+      elif printf '%s' "$out" | grep -q "đồng bộ mốc thời gian"; then
+        printf "✅ đồng bộ mốc thời gian   ⏱ %s\n" "$(hms $el)"; ok=$((ok+1)); merged=1
+      elif printf '%s' "$out" | grep -q "đã trỏ đúng nhánh"; then
+        printf "✅ đã đúng sẵn   ⏱ %s\n" "$(hms $el)"; same=$((same+1))
       elif [ "$rc" = 2 ]; then
         # ── TẦNG ③: không nhánh nào chứa bản ghi mới nhất ⇒ GỘP ─────────────
         # Đây là lúc DUY NHẤT gộp thật sự cần. Yêu cầu của người dùng là không

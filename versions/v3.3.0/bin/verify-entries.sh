@@ -129,7 +129,9 @@ for k,ps in grp.items():
     uni=set().union(*[d[0] for d in data.values()])
     curfp=set().union(*[data[p][0] for p in cur])
     sid=os.path.basename(cur[0])[:-6]
-    best=max(ps,key=lambda p:len(data[p][0]))
+    # CÙNG quy tắc với merge --repoint: MỚI NHẤT, rồi mới tới giàu nhất.
+    # Hai bên khác quy tắc thì verify sẽ khuyên một đằng, repoint làm một nẻo.
+    best=max(ps,key=lambda p:(data[p][1], len(data[p][0])))
     bad.append((len(uni)-len(curfp),idx.get(sid,k[1]),sid[:8],os.path.basename(best)[:8],nts[:16]))
 
 if not QUIET:

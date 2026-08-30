@@ -268,14 +268,25 @@ if REPOINT:
         print(f"      Trỏ thôi là chưa đủ — cần GỘP:")
         print(f"      claude-history merge --id {cur[:8]} --apply --point")
         raise SystemExit(2)
+    # Trong số các nhánh CÓ CHỨA tin mới nhất, chọn nhánh giàu nội dung nhất.
+    # Thứ tự hai điều kiện này là điểm mấu chốt — đo 27/08/2026 trên 41 hội thoại:
+    #     chọn giàu nhất TRƯỚC, không lọc  → 37/41 đủ tin mới  (4 ca THIẾU)
+    #     LỌC theo tin mới rồi mới chọn giàu → 41/41 đủ tin mới (0 ca thiếu)
+    # Bốn ca hỏng đều cùng dạng: nhánh giàu là bản CŨ đã bị nén thay thế.
+    #     phong thủy   : giàu ece09c56 (6033 đoạn) · mới 2b56a0b7 (77 đoạn)
+    #     redance-1715 : giàu 48a90b72 (2121 đoạn) · mới 9deec795 (1084 đoạn)
+    # Đây chính là cách app tự làm: mục luôn trỏ vào đoạn ĐANG TIẾP DIỄN.
     best=max(_have, key=lambda s:(len(get(s)[1]), get(s)[3]))
     print(f"   tin nhắn mới nhất: {_newest_ts[:16].replace('T',' ')} · {len(_have)}/{len(sids)} nhánh có chứa")
-    if best==cur:
-        print(f"   ✅ mục đã trỏ vào nhánh đầy đủ nhất — không cần đổi.")
-        raise SystemExit(0)
-    b_all=len(get(best)[1]); b_txt=len(get(best)[2])
-    print(f"   → trỏ sang {best[:8]}  ({b_all} đoạn · {b_txt} đoạn CHỮ)")
-    print(f"     thay cho {cur[:8]}  ({n} đoạn · {_tn} đoạn CHỮ)")
+    # Trỏ đúng nhánh rồi NHƯNG mốc thời gian có thể vẫn lệch ⇒ mục chìm đáy.
+    # Không được thoát sớm ở đây: phải đi tiếp để đồng bộ lastActivityAt.
+    _same = (best==cur)
+    if _same:
+        print(f"   ✅ mục đã trỏ đúng nhánh — kiểm tiếp mốc thời gian.")
+    if not _same:
+        b_all=len(get(best)[1]); b_txt=len(get(best)[2])
+        print(f"   → trỏ sang {best[:8]}  ({b_all} đoạn · {b_txt} đoạn CHỮ)")
+        print(f"     thay cho {cur[:8]}  ({n} đoạn · {_tn} đoạn CHỮ)")
     if not APPLY:
         print(f"\n🔎 Xem trước — chưa ghi. Thêm --apply để trỏ.")
         raise SystemExit(0)
@@ -290,8 +301,26 @@ if REPOINT:
     bak=f+".bak-"+datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     shutil.copy2(f,bak)
     d["cliSessionId"]=best
+    # ── ĐỒNG BỘ lastActivityAt  ⭐ v3.3.0 ───────────────────────────────────
+    # App sắp xếp danh sách Recents theo lastActivityAt. Trỏ đúng nhánh mà để
+    # mốc này cũ thì hội thoại CHÌM XUỐNG ĐÁY — có đủ nội dung nhưng không tìm
+    # ra, tức là "mất" theo nghĩa người dùng. Đo 27/08/2026: 5 mục lệch tới
+    # 3,3 ngày. Đây là bước app tự làm mỗi khi ghi tin nhắn; mô phỏng lại cho đủ.
+    _ts=get(best)[3]
+    if _ts:
+        try:
+            _ms=int(datetime.datetime.fromisoformat(_ts.replace("Z","+00:00")).timestamp()*1000)
+            if _ms>(d.get("lastActivityAt") or 0):
+                d["lastActivityAt"]=_ms
+                d["lastFocusedAt"]=max(d.get("lastFocusedAt") or 0,_ms)
+                print(f"   đồng bộ lastActivityAt → {_ts[:16].replace('T',' ')}")
+        except Exception:
+            pass
     json.dump(d,open(f,"w"),ensure_ascii=False,indent=2)
-    print(f"\n✅ Đã trỏ mục Recents sang nhánh đầy đủ nhất. KHÔNG tạo file nào.")
+    if _same:
+        print(f"\n✅ Đã đồng bộ mốc thời gian. KHÔNG tạo file nào.")
+    else:
+        print(f"\n✅ Đã trỏ mục Recents sang nhánh đầy đủ nhất. KHÔNG tạo file nào.")
     print(f"   Hoàn tác: cp '{bak}' '{f}'")
     raise SystemExit(0)
 
