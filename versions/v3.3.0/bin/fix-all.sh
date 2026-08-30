@@ -197,6 +197,11 @@ if [ "$SCOPE" != list ]; then
       if printf '%s' "$out" | grep -q "Đã trỏ mục Recents"; then
         gain="$(printf '%s' "$out" | grep -oE '\([0-9]+ đoạn · [0-9]+ đoạn CHỮ\)' | head -1)"
         printf "✅ trỏ sang %s   ⏱ %s\n" "${gain:-bản đầy đủ hơn}" "$(hms $el)"
+        # Nhánh mới mang tên khác ⇒ merge đã NỐI tên bạn đặt vào cuối transcript
+        # nhánh đó. Báo ra để bạn biết tên được giữ, không phải im lặng.
+        if printf '%s' "$out" | grep -q "MANG TÊN THEO"; then
+          echo "         🏷  giữ tên bạn đặt — đã ghi vào nhánh mới"
+        fi
         ok=$((ok+1)); merged=1
       elif printf '%s' "$out" | grep -q "đồng bộ mốc thời gian"; then
         printf "✅ đồng bộ mốc thời gian   ⏱ %s\n" "$(hms $el)"; ok=$((ok+1)); merged=1

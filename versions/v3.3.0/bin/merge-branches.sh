@@ -32,7 +32,7 @@
 set -uo pipefail
 PROJ="$HOME/.claude/projects"
 IDX="$HOME/Library/Application Support/Claude/claude-code-sessions-shared"
-MODE=list; ID=""; APPLY=0; FORCE=0; POINT=0; REPOINT=0
+MODE=list; ID=""; APPLY=0; FORCE=0; POINT=0; REPOINT=0; ALLOWRN=0
 SINCE=""; UNTIL=""; TSUFFIX=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -42,6 +42,7 @@ while [ $# -gt 0 ]; do
     --apply) APPLY=1 ;;
     --point) POINT=1 ;;
     --repoint) REPOINT=1 ;;   # chỉ TRỎ sang nhánh sẵn có, KHÔNG dựng file
+    --allow-rename) ALLOWRN=1 ;;  # chấp nhận đổi tên khi trỏ sang nhánh tên khác
     --force) FORCE=1 ;;
     --since) shift; SINCE="${1:-}" ;;
     --until) shift; UNTIL="${1:-}" ;;
@@ -52,12 +53,13 @@ while [ $# -gt 0 ]; do
   shift
 done
 PROJ="$PROJ" IDX="$IDX" MODE="$MODE" ID="$ID" APPLY="$APPLY" FORCE="$FORCE" POINT="$POINT" \
-SINCE="${SINCE:-}" UNTIL="${UNTIL:-}" TSUFFIX="${TSUFFIX:-}" REPOINT="$REPOINT" /usr/bin/python3 - <<'PY'
+SINCE="${SINCE:-}" UNTIL="${UNTIL:-}" TSUFFIX="${TSUFFIX:-}" REPOINT="$REPOINT" ALLOWRN="$ALLOWRN" /usr/bin/python3 - <<'PY'
 import json,glob,os,uuid,hashlib,collections,datetime,shutil
 PROJ=os.environ["PROJ"]; IDX=os.environ["IDX"]
 MODE=os.environ["MODE"]; ID=os.environ["ID"]; APPLY=os.environ["APPLY"]=="1"
 POINT=os.environ.get("POINT")=="1"
 REPOINT=os.environ.get("REPOINT")=="1"
+ALLOWRN=os.environ.get("ALLOWRN")=="1"
 
 def _claude_running():
     """CỐ Ý dùng `ps -Ao args`, KHÔNG dùng `pgrep`: đo thực tế trên macOS,
@@ -276,7 +278,64 @@ if REPOINT:
     #     phong thủy   : giàu ece09c56 (6033 đoạn) · mới 2b56a0b7 (77 đoạn)
     #     redance-1715 : giàu 48a90b72 (2121 đoạn) · mới 9deec795 (1084 đoạn)
     # Đây chính là cách app tự làm: mục luôn trỏ vào đoạn ĐANG TIẾP DIỄN.
-    best=max(_have, key=lambda s:(len(get(s)[1]), get(s)[3]))
+    # ── TẦNG ②b: BẢO TOÀN TÊN NGƯỜI DÙNG ĐẶT  ⭐ v3.3.0 ────────────────────
+    # SỰ CỐ 30/08/2026: người dùng fork một hội thoại rồi ĐỔI TÊN để phân biệt
+    #   "REDANCE-1715 Mail investigation (fork) - feedbacks 27/08"
+    # `--repoint` trỏ sang nhánh MỚI NHẤT (d38c08e9) — nhánh đó mang tiêu đề
+    # CHUNG "…(fork)", nên app hiển thị lại tên chung. Tên tự đặt biến mất.
+    # Repoint KHÔNG ghi đè trường title (bak chứng minh: chỉ đổi lastActivityAt);
+    # tên đổi vì app đọc tiêu đề TỪ TRANSCRIPT của nhánh đang trỏ.
+    #
+    # Quy tắc: chỉ trỏ trong phạm vi CÙNG TIÊU ĐỀ với mục hiện tại. Khi phải
+    # chọn giữa "giữ tên" và "lấy tin mới nhất tuyệt đối", script KHÔNG tự quyết
+    # — nó dừng và đưa người dùng số liệu. Đây là bài học lặp lại nhiều lần:
+    # tối ưu một ràng buộc rồi âm thầm bỏ mất ràng buộc kia.
+    _cur_title=(get(cur)[0] or "").strip()
+    _same_name=[s for s in _have if (get(s)[0] or "").strip()==_cur_title]
+    if ALLOWRN: _same_name=_have
+    if _same_name:
+        _pool=_same_name
+        if len(_same_name)<len(_have):
+            print(f"   giữ tên hiện tại: {_cur_title[:50]!r}")
+            print(f"      bỏ qua {len(_have)-len(_same_name)} nhánh mang tên khác")
+    else:
+        # ── MANG TÊN THEO SANG NHÁNH MỚI  ⭐ v3.3.0 ────────────────────────
+        # Không phải chọn giữa "giữ tên" và "lấy tin mới" — làm được cả hai.
+        # App lưu tên hiển thị bằng bản ghi `custom-title` NGAY TRONG transcript
+        # (3 khoá: type · sessionId · customTitle), và ghi lại nhiều lần rải rác
+        # trong file — dòng cuối cùng thắng. Nên NỐI THÊM một dòng như vậy vào
+        # cuối nhánh đích là đúng cơ chế app, không phải mẹo.
+        #
+        # SỰ CỐ 30/08/2026: repoint kéo mục từ 6ac60748 (mang tên người dùng đặt
+        # "…(fork) - feedbacks 27/08") sang d38c08e9 (tên chung) vì d38c08e9 chứa
+        # tin mới nhất. Tên tự đặt biến mất khỏi danh sách.
+        #
+        # AN TOÀN: chỉ NỐI THÊM một dòng ở cuối, KHÔNG sửa dòng nào có sẵn.
+        # Hoàn tác = xoá dòng cuối. Bản gốc còn trong kho git.
+        _alt=max(_have, key=lambda s:(len(get(s)[1]), get(s)[3]))
+        _alt_title=(get(_alt)[0] or "").strip()
+        print(f"\n   ⚠️  Nhánh chứa tin mới nhất mang TÊN KHÁC:")
+        print(f"      tên bạn đang dùng : {_cur_title[:56]!r}")
+        print(f"      tên nhánh mới     : {_alt_title[:56]!r}")
+        if not _cur_title:
+            print(f"      ⛔ mục hiện tại không có tiêu đề — không mang theo được.")
+            raise SystemExit(3)
+        print(f"      → MANG TÊN THEO sang nhánh mới (nối 1 dòng vào cuối transcript)")
+        if not APPLY:
+            print(f"\n🔎 Xem trước — chưa ghi. Thêm --apply để trỏ.")
+            raise SystemExit(0)
+        _rec={"type":"custom-title","sessionId":_alt,"customTitle":_cur_title}
+        _path=files[_alt]
+        try:
+            with open(_path,"a") as _fh:
+                _fh.write(json.dumps(_rec,ensure_ascii=False)+"\n")
+            print(f"      ✅ đã ghi tên vào {_alt[:8]} — hoàn tác: xoá dòng CUỐI của")
+            print(f"         {_path}")
+        except Exception as _e:
+            print(f"      ⛔ không ghi được tên: {_e}")
+            raise SystemExit(3)
+        _pool=[_alt]
+    best=max(_pool, key=lambda s:(len(get(s)[1]), get(s)[3]))
     print(f"   tin nhắn mới nhất: {_newest_ts[:16].replace('T',' ')} · {len(_have)}/{len(sids)} nhánh có chứa")
     # Trỏ đúng nhánh rồi NHƯNG mốc thời gian có thể vẫn lệch ⇒ mục chìm đáy.
     # Không được thoát sớm ở đây: phải đi tiếp để đồng bộ lastActivityAt.
