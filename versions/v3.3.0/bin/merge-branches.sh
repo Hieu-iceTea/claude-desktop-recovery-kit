@@ -324,13 +324,33 @@ if REPOINT:
         if not APPLY:
             print(f"\n🔎 Xem trước — chưa ghi. Thêm --apply để trỏ.")
             raise SystemExit(0)
+        # Chốt: ghi vào transcript khi app đang chạy là tranh chấp với chính app
+        # (nó cũng đang ghi vào file đó). Mọi thao tác ghi khác đã có chốt này;
+        # đường MANG TÊN THEO bị bỏ sót vì nó thêm sau.
+        if _claude_running():
+            print(f"      ⛔ Claude Desktop ĐANG CHẠY — không ghi vào transcript.")
+            print(f"         Thoát trước:  claude-history quit")
+            raise SystemExit(3)
+        # THỨ TỰ QUAN TRỌNG: kiểm mục Recents tồn tại TRƯỚC khi ghi transcript.
+        # Ghi xong mới phát hiện không trỏ được thì transcript đã bẩn một dòng
+        # mà chẳng được gì — và người dùng không biết để dọn.
+        _tgt=None
+        for _f in glob.glob(os.path.join(IDX,"local_*.json")):
+            try: _d=json.load(open(_f))
+            except Exception: continue
+            if _d.get("cliSessionId")==cur: _tgt=_f; break
+        if not _tgt:
+            print(f"      ⛔ Không thấy mục Recents nào trỏ vào {cur[:8]} — không trỏ được.")
+            print(f"         KHÔNG ghi gì vào transcript.")
+            raise SystemExit(3)
         _rec={"type":"custom-title","sessionId":_alt,"customTitle":_cur_title}
         _path=files[_alt]
+        _before=os.path.getsize(_path)
         try:
             with open(_path,"a") as _fh:
                 _fh.write(json.dumps(_rec,ensure_ascii=False)+"\n")
-            print(f"      ✅ đã ghi tên vào {_alt[:8]} — hoàn tác: xoá dòng CUỐI của")
-            print(f"         {_path}")
+            print(f"      ✅ đã ghi tên vào {_alt[:8]}")
+            print(f"         hoàn tác: truncate -s {_before} '{_path}'")
         except Exception as _e:
             print(f"      ⛔ không ghi được tên: {_e}")
             raise SystemExit(3)

@@ -207,6 +207,14 @@ if [ "$SCOPE" != list ]; then
         printf "✅ đồng bộ mốc thời gian   ⏱ %s\n" "$(hms $el)"; ok=$((ok+1)); merged=1
       elif printf '%s' "$out" | grep -q "đã trỏ đúng nhánh"; then
         printf "✅ đã đúng sẵn   ⏱ %s\n" "$(hms $el)"; same=$((same+1))
+      elif [ "$rc" = 3 ]; then
+        # rc=3 ⇒ giữ nguyên có chủ đích: không mang được tên, hoặc app đang chạy.
+        # KHÔNG phải lỗi — nếu đếm là lỗi thì fix báo thất bại oan và người dùng
+        # mất niềm tin vào dòng tổng kết.
+        printf "⚠️  giữ nguyên — %s   ⏱ %s\n" \
+          "$(printf '%s' "$out" | grep -oE 'mục hiện tại không có tiêu đề|Claude Desktop ĐANG CHẠY|Không thấy mục Recents|không ghi được tên' | head -1 || echo 'xung đột tên')" \
+          "$(hms $el)"
+        conflict=$((conflict+1)); continue
       elif [ "$rc" = 2 ]; then
         # ── TẦNG ③: không nhánh nào chứa bản ghi mới nhất ⇒ GỘP ─────────────
         # Đây là lúc DUY NHẤT gộp thật sự cần. Yêu cầu của người dùng là không
